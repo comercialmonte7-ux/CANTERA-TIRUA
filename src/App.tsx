@@ -60,9 +60,6 @@ import {
 } from 'recharts';
 import { format, startOfDay, endOfDay, isWithinInterval, subDays, startOfMonth, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { getInventory, updateInventoryStock, Inventory } from './lib/firebase';
 
 export default function App() {
@@ -816,70 +813,85 @@ function ReportsCard({ dispatches }: { dispatches: Dispatch[] }) {
     );
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const filtered = getFilteredDispatches();
     if (filtered.length === 0) {
       toast.error('No hay datos en el rango seleccionado');
       return;
     }
 
-    const dataToExport = filtered.map(d => ({
-      Fecha: format(d.date, 'dd/MM/yyyy HH:mm'),
-      Camion: d.truckPlate,
-      Chofer: d.truckDriver,
-      Volumen_m3: d.materialVolume,
-      Material: d.materialType,
-      Destino: d.destination,
-      Guia: d.guideNumber,
-      Registrado_Por: d.creatorName,
-      Notas: d.notes || ''
-    }));
+    const toastId = toast.loading('Preparando Excel...');
+    try {
+      const XLSX = await import('xlsx');
+      
+      const dataToExport = filtered.map(d => ({
+        Fecha: format(d.date, 'dd/MM/yyyy HH:mm'),
+        Camion: d.truckPlate,
+        Chofer: d.truckDriver,
+        Volumen_m3: d.materialVolume,
+        Material: d.materialType,
+        Destino: d.destination,
+        Guia: d.guideNumber,
+        Registrado_Por: d.creatorName,
+        Notas: d.notes || ''
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Despachos");
-    XLSX.writeFile(wb, `Reporte_Tirua_${startDate}_a_${endDate}.xlsx`);
-    toast.success('Excel generado correctamente');
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Despachos");
+      XLSX.writeFile(wb, `Reporte_Tirua_${startDate}_a_${endDate}.xlsx`);
+      toast.success('Excel generado correctamente', { id: toastId });
+    } catch (error) {
+      toast.error('Error al generar Excel', { id: toastId });
+    }
   };
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     const filtered = getFilteredDispatches();
     if (filtered.length === 0) {
       toast.error('No hay datos en el rango seleccionado');
       return;
     }
 
-    const doc = new jsPDF();
-    const title = "Cantera Tirúa - Reporte de Despachos";
-    const range = `Rango: ${format(new Date(startDate + 'T00:00:00'), 'dd/MM/yyyy')} al ${format(new Date(endDate + 'T00:00:00'), 'dd/MM/yyyy')}`;
+    const toastId = toast.loading('Preparando PDF...');
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+      
+      const doc = new jsPDF();
+      const title = "Cantera Tirúa - Reporte de Despachos";
+      const range = `Rango: ${format(new Date(startDate + 'T00:00:00'), 'dd/MM/yyyy')} al ${format(new Date(endDate + 'T00:00:00'), 'dd/MM/yyyy')}`;
 
-    doc.setFontSize(18);
-    doc.text(title, 14, 22);
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(range, 14, 30);
+      doc.setFontSize(18);
+      doc.text(title, 14, 22);
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(range, 14, 30);
 
-    const body = filtered.map(d => [
-      format(d.date, 'dd/MM/yyyy HH:mm'),
-      d.truckPlate,
-      d.truckDriver,
-      d.materialVolume.toString(),
-      d.materialType,
-      d.destination,
-      d.guideNumber
-    ]);
+      const body = filtered.map(d => [
+        format(d.date, 'dd/MM/yyyy HH:mm'),
+        d.truckPlate,
+        d.truckDriver,
+        d.materialVolume.toString(),
+        d.materialType,
+        d.destination,
+        d.guideNumber
+      ]);
 
-    autoTable(doc, {
-      head: [['Fecha', 'Patente', 'Chofer', 'm3', 'Material', 'Destino', 'Guía']],
-      body: body,
-      startY: 35,
-      theme: 'striped',
-      headStyles: { fillColor: [180, 83, 9] },
-      styles: { fontSize: 8 }
-    });
+      autoTable(doc, {
+        head: [['Fecha', 'Patente', 'Chofer', 'm3', 'Material', 'Destino', 'Guía']],
+        body: body,
+        startY: 35,
+        theme: 'striped',
+        headStyles: { fillColor: [180, 83, 9] },
+        styles: { fontSize: 8 }
+      });
 
-    doc.save(`Reporte_Tirua_${startDate}_a_${endDate}.pdf`);
-    toast.success('PDF generado correctamente');
+      doc.save(`Reporte_Tirua_${startDate}_a_${endDate}.pdf`);
+      toast.success('PDF generado correctamente', { id: toastId });
+    } catch (error) {
+      toast.error('Error al generar PDF', { id: toastId });
+    }
   };
 
   return (

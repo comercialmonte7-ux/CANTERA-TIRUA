@@ -141,8 +141,10 @@ export const syncUserProfile = async (user: User) => {
         // This will only work if the user is already ADMIN or if rules allow it
         // Since we want the FIRST user to be admin, but rules block list,
         // we handle the error.
-        const usersCount = (await getDocs(collection(db, 'users'))).size;
-        if (usersCount === 0) role = 'ADMIN';
+        // Optimización: Solo intentamos ver si hay AL MENOS un usuario para no cargar toda la colección
+        const q = query(collection(db, 'users'), limit(1));
+        const usersSnap = await getDocs(q);
+        if (usersSnap.empty) role = 'ADMIN';
       } catch (error) {
         // If we can't list, assume we are not the first user or just fall back to UNAUTHORIZED
         console.log('Using default unauthorized role due to restricted list access');
