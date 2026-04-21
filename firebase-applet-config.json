@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0214067559",
-  "appId": "1:1031843067191:web:6c4b182b42af75e66256b2",
-  "apiKey": "AIzaSyDdeWKRGIgcD9PlTjppQa3SS7ClR13ykvE",
-  "authDomain": "gen-lang-client-0214067559.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-bdb5ee37-cf51-4034-a6b0-365a5755b0d5",
-  "storageBucket": "gen-lang-client-0214067559.firebasestorage.app",
-  "messagingSenderId": "1031843067191",
-  "measurementId": ""
+  "projectId": "cantera-tirua",
+  "appId": "1:45976637781:web:8ac6f26f3b6860901cdfdc",
+  "apiKey": "AIzaSyD3f512Fmhv8-Pp30KYrFVFaoW0nr6w-ds",
+  "authDomain": "cantera-tirua.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "cantera-tirua.firebasestorage.app",
+  "messagingSenderId": "45976637781",
+  "measurementId": "G-07ZW7X9RCN"
 }
