@@ -1,9 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { 
-  getFirestore, 
+  initializeFirestore, 
   collection, 
-  addDoc, 
   query, 
   where, 
   getDocs, 
@@ -16,34 +15,45 @@ import {
   setDoc, 
   getDoc, 
   updateDoc,
-  runTransaction
+  runTransaction,
+  enableIndexedDbPersistence,
+  getDocFromServer
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-// Inicialización de Firestore manejando el ID de base de datos
-export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
 
-// Validación de Conexión a Firestore (Requerido por protocolo)
-import { getDocFromServer } from 'firebase/firestore';
+// Inicialización Robusta de Firestore con fallback a Long Polling para evitar errores 'unavailable'
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
+
+// Habilitar Persistencia Offline para velocidad
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).catch((err) => {
+    console.warn('Persistencia offline no disponible:', err.code);
+  });
+}
+
+// Validación de Conexión a Firestore
 async function testConnection() {
   try {
-    // Intentamos leer la ruta de prueba que acabamos de habilitar en las reglas
     await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log('✅ Conexión a Firestore establecida correctamente.');
+    console.log('✅ [Firebase] Conexión establecida con éxito.');
   } catch (error: any) {
     if (error.code === 'permission-denied') {
-      console.warn("Conexión activa, pero el documento de prueba no existe o está protegido (esto es normal).");
+      console.warn("⚠️ Conexión Activa: Permisos restringidos (normal).");
       return;
     }
     
-    if (error.message?.includes('the client is offline') || error.code === 'unavailable') {
-      console.error("❌ Error de Conexión: El cliente no puede alcanzar Firestore. Posibles causas: 1) Bloqueo de red/Firewall. 2) Credenciales (API Key/Project ID) incorrectas en firebase-applet-config.json. 3) Firestore no está habilitado en este proyecto.");
-    } else {
-      console.error("Detalle técnico del error de conexión:", error.message || error);
+    if (error.code === 'unavailable' || error.code === 'failed-precondition') {
+      console.error(
+        "❌ [Firebase] ERROR DE CONEXIÓN.\n\n" +
+        "1. Revisa que Firestore esté en 'Modo Nativo' en tu consola.\n" +
+        "2. Asegúrate de que las reglas de seguridad estén publicadas.\n" +
+        "3. Verifica que la API Key sea la correcta."
+      );
     }
   }
 }
@@ -64,7 +74,7 @@ export interface Dispatch {
   destination: string;
   guideNumber: string;
   notes?: string;
-  photoUrl?: string; // Evidencia fotográfica
+  photoUrl?: string; 
   creatorId: string;
   creatorName: string;
   createdAt?: any;
@@ -86,7 +96,6 @@ export interface UserProfile {
   createdAt?: any;
 }
 
-// Actualizado para manejar inventario mediante transacciones
 export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'createdAt'>) => {
   const dispatchRef = doc(collection(db, 'dispatches'));
   const inventoryId = dispatchData.materialType.toLowerCase().replace(/\s+/g, '-');
@@ -95,7 +104,6 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
   return runTransaction(db, async (transaction) => {
     const inventoryDoc = await transaction.get(inventoryRef);
     
-    // Si existe el inventario, descontamos. Si no, lo creamos con un valor base (o negativo por ahora si no hay carga inicial)
     if (inventoryDoc.exists()) {
       const currentStock = inventoryDoc.data().currentStock;
       transaction.update(inventoryRef, {
@@ -103,10 +111,9 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
         updatedAt: serverTimestamp()
       });
     } else {
-      // Opcional: Crear inventario si no existe (podría iniciarse en 0 o un valor por defecto)
       transaction.set(inventoryRef, {
         materialType: dispatchData.materialType,
-        currentStock: -dispatchData.materialVolume, // Empieza en negativo si no hubo carga inicial
+        currentStock: -dispatchData.materialVolume,
         unit: 'm3',
         updatedAt: serverTimestamp()
       });
@@ -123,6 +130,25 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
 
 export const getInventory = (callback: (inventory: Inventory[]) => void) => {
   return onSnapshot(collection(db, 'inventory'), (snapshot) => {
+    if (snapshot.empty) {
+      const defaultMaterials = [
+        'Base Estabilizada',
+        'Grava 3/4',
+        'Gravilla',
+        'Arena de Planta',
+        'Integral'
+      ];
+      defaultMaterials.forEach(async (mat) => {
+        const id = mat.toLowerCase().replace(/ /g, '_');
+        await setDoc(doc(db, 'inventory', id), {
+          materialType: mat,
+          currentStock: 0,
+          unit: 'm3',
+          updatedAt: serverTimestamp()
+        });
+      });
+    }
+
     const items = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -153,79 +179,77 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
 export const syncUserProfile = async (user: User) => {
   const docRef = doc(db, 'users', user.uid);
   
-  // Fast path para el administrador principal
   if (user.email === 'mari.ricardo@gmail.com') {
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) {
-      const newUser: UserProfile = {
-        uid: user.uid,
-        email: user.email || '',
-        displayName: user.displayName || '',
-        role: 'ADMIN',
-        createdAt: serverTimestamp(),
-      };
-      await setDoc(docRef, newUser);
-      return newUser;
-    } else {
-      const existingProfile = docSnap.data() as UserProfile;
-      if (existingProfile.role !== 'ADMIN') {
+    getDoc(docRef).then(async (snap) => {
+      if (!snap.exists()) {
+        await setDoc(docRef, {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || '',
+          role: 'ADMIN',
+          createdAt: serverTimestamp(),
+        });
+      } else if (snap.data()?.role !== 'ADMIN') {
         await updateDoc(docRef, { role: 'ADMIN' });
-        return { ...existingProfile, role: 'ADMIN' };
       }
-      return existingProfile;
-    }
+    }).catch(e => console.warn("Sync ADMIN background error:", e));
+
+    return {
+      uid: user.uid,
+      email: user.email || '',
+      displayName: user.displayName || '',
+      role: 'ADMIN' as const,
+    };
   }
 
-  // Verificamos si ya existe alguien con este correo (invitado o registrado)
-  const qEmail = query(collection(db, 'users'), where('email', '==', user.email), limit(1));
-  const emailSnap = await getDocs(qEmail);
+  const fetchProfile = async (): Promise<UserProfile> => {
+    const qEmail = query(collection(db, 'users'), where('email', '==', user.email), limit(1));
+    const emailSnap = await getDocs(qEmail);
 
-  if (!emailSnap.empty) {
-    const existingDoc = emailSnap.docs[0];
-    const data = existingDoc.data() as UserProfile;
-    
-    // Si el ID es distinto (era una invitación temporal), migramos los datos al ID real del usuario
-    if (existingDoc.id !== user.uid) {
-      const userData = {
-        ...data,
-        uid: user.uid,
-        displayName: user.displayName || data.displayName,
-        updatedAt: serverTimestamp(),
-      };
-      // Usamos un setDoc para crear el nuevo y el borrar el anterior es opcional pero ayuda a limpiar
-      await setDoc(docRef, userData);
-      return userData;
+    if (!emailSnap.empty) {
+      const existingDoc = emailSnap.docs[0];
+      const data = existingDoc.data() as UserProfile;
+      
+      if (existingDoc.id !== user.uid) {
+        const userData = { ...data, uid: user.uid, updatedAt: serverTimestamp() };
+        await setDoc(docRef, userData);
+        return userData;
+      }
+      return data;
     }
-    return data;
-  }
 
-  const docSnap = await getDoc(docRef);
-  if (!docSnap.exists()) {
-    // Check if we already have an admin (first user becomes admin)
-    let role: UserProfile['role'] = 'UNAUTHORIZED';
-    
-    try {
-      // Optimización: Solo intentamos ver si hay AL MENOS un usuario para no cargar toda la colección
-      const q = query(collection(db, 'users'), limit(1));
-      const usersSnap = await getDocs(q);
-      if (usersSnap.empty) role = 'ADMIN';
-    } catch (error) {
-      console.log('Using default unauthorized role due to restricted list access');
-      role = 'UNAUTHORIZED';
-    }
-    
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) return docSnap.data() as UserProfile;
+
+    const qCount = query(collection(db, 'users'), limit(1));
+    const countSnap = await getDocs(qCount);
+    const role: UserProfile['role'] = countSnap.empty ? 'ADMIN' : 'UNAUTHORIZED';
+
     const newUser: UserProfile = {
       uid: user.uid,
       email: user.email || '',
       displayName: user.displayName || '',
-      role: role,
+      role,
       createdAt: serverTimestamp(),
     };
     await setDoc(docRef, newUser);
     return newUser;
-  }
-  
-  return docSnap.data() as UserProfile;
+  };
+
+  return Promise.race([
+    fetchProfile(),
+    new Promise<UserProfile>((_, reject) => 
+      setTimeout(() => reject(new Error('TIMEOUT_SYNC')), 6000)
+    )
+  ]).catch(err => {
+    console.error("Sync Error or Timeout:", err);
+    return {
+      uid: user.uid,
+      email: user.email || '',
+      displayName: user.displayName || '',
+      role: 'UNAUTHORIZED' as const
+    };
+  });
 };
 
 export const getAllUserProfiles = (callback: (users: UserProfile[]) => void) => {
@@ -240,14 +264,12 @@ export const updateUserRole = async (uid: string, role: UserProfile['role']) => 
   return updateDoc(docRef, { role });
 };
 
-// Permite pre-autorizar a un usuario por correo electrónico
 export const preAuthorizeUser = async (email: string, role: UserProfile['role']) => {
-  // Generamos un ID basado en el email para poder encontrarlo luego si es necesario
-  const tempId = `invited_${email.replace(/[.@]/g, '_')}`;
-  const docRef = doc(db, 'users', tempId);
+  const cleanEmail = email.toLowerCase().trim();
+  const inviteId = `invite_${cleanEmail.replace(/[.@]/g, '_')}`;
+  const docRef = doc(db, 'users', inviteId);
   
-  // Verificamos si ya existe alguien con ese correo
-  const q = query(collection(db, 'users'), where('email', '==', email));
+  const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(1));
   const snap = await getDocs(q);
   
   if (!snap.empty) {
@@ -256,8 +278,8 @@ export const preAuthorizeUser = async (email: string, role: UserProfile['role'])
   }
 
   return setDoc(docRef, {
-    uid: tempId,
-    email: email,
+    uid: inviteId,
+    email: cleanEmail,
     displayName: 'Usuario Invitado',
     role: role,
     createdAt: serverTimestamp(),
@@ -266,10 +288,8 @@ export const preAuthorizeUser = async (email: string, role: UserProfile['role'])
 };
 
 export const deleteUser = async (uid: string) => {
-  // Nota: Esto solo borra el perfil en Firestore, no la cuenta en Auth
   const docRef = doc(db, 'users', uid);
-  // Por seguridad, los admins no pueden borrarse a sí mismos accidentalmente aquí
-  return updateDoc(docRef, { role: 'UNAUTHORIZED' }); // O usar deleteDoc(docRef)
+  return updateDoc(docRef, { role: 'UNAUTHORIZED' }); 
 };
 
 export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) => {

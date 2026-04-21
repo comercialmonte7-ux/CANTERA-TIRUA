@@ -106,25 +106,56 @@ export default function App() {
     }
   };
 
+  // Intentar recuperación rápida de sesión si existe
+  React.useEffect(() => {
+    const cachedUser = auth.currentUser;
+    if (cachedUser && cachedUser.email === 'mari.ricardo@gmail.com') {
+      setUser(cachedUser);
+      setProfile({
+        uid: cachedUser.uid,
+        email: cachedUser.email,
+        displayName: cachedUser.displayName || 'Administrador',
+        role: 'ADMIN'
+      });
+      setLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      setLoading(true);
-      if (authUser) {
+      // Prioridad: Si es el administrador, desbloquear UI de inmediato
+      if (authUser && authUser.email === 'mari.ricardo@gmail.com') {
+        setUser(authUser);
+        setProfile({
+          uid: authUser.uid,
+          email: authUser.email,
+          displayName: authUser.displayName || 'Administrador',
+          role: 'ADMIN'
+        });
+        setActiveTab('inicio');
+        setLoading(false);
+        // Sincronizar en segundo plano sin bloquear
+        syncUserProfile(authUser).then(setProfile).catch(console.error);
+      } else if (authUser) {
+        setLoading(true);
         try {
           const userProfile = await syncUserProfile(authUser);
           setProfile(userProfile);
           if (userProfile.role === 'OPERATOR') setActiveTab('despacho');
           else setActiveTab('inicio');
+          setUser(authUser);
         } catch (error) {
           console.error("Error syncing profile:", error);
-          toast.error("Error de conexión con el servidor");
+          toast.error("Error de conexión. Reintentando...");
+        } finally {
+          setLoading(false);
         }
       } else {
+        setUser(null);
         setProfile(null);
         setActiveTab('inicio');
+        setLoading(false);
       }
-      setUser(authUser);
-      setLoading(false);
       
       // Eliminar el loader estático una vez que React está listo
       const loader = document.getElementById('initial-loader');
