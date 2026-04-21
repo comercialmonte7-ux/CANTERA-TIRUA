@@ -166,8 +166,14 @@ export const syncUserProfile = async (user: User) => {
   const existingProfile = docSnap.data() as UserProfile;
   // Autocorrección de permisos para el administrador principal
   if (user.email === 'mari.ricardo@gmail.com' && existingProfile.role !== 'ADMIN') {
-    await updateDoc(docRef, { role: 'ADMIN' });
-    return { ...existingProfile, role: 'ADMIN' };
+    try {
+      console.log('Forzando actualización de rol a ADMIN...');
+      await updateDoc(docRef, { role: 'ADMIN' });
+      console.log('Rol actualizado con éxito.');
+      return { ...existingProfile, role: 'ADMIN' };
+    } catch (e) {
+      console.error('Error al forzar rol ADMIN. Revisa las reglas de seguridad:', e);
+    }
   }
   
   return existingProfile;

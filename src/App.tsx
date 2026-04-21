@@ -72,6 +72,18 @@ export default function App() {
 
   const formattedDate = React.useMemo(() => format(new Date(), "EEEE, d 'de' MMMM", { locale: es }), []);
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setProfile(null);
+      setUser(null);
+      setActiveTab('inicio');
+      toast.info('Sesión finalizada');
+    } catch (error) {
+      toast.error('Error al cerrar sesión');
+    }
+  };
+
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       setLoading(true);
@@ -145,7 +157,7 @@ export default function App() {
                 </div>
                 <Button 
                   variant="outline"
-                  onClick={logout} 
+                  onClick={handleLogout} 
                   className="w-full h-12 text-xs font-black uppercase tracking-widest border-zinc-200 rounded-xl hover:bg-zinc-50 flex items-center justify-center gap-2 transition-all"
                 >
                   <LogOut className="w-4 h-4" />
@@ -198,7 +210,7 @@ export default function App() {
           <div className="hidden sm:block text-right">
             <p className="text-xs sm:text-sm font-bold text-zinc-800 lowercase first-letter:uppercase">{formattedDate}</p>
             <p className="text-[8px] sm:text-[10px] text-emerald-600 flex items-center justify-end gap-1 sm:gap-1.5 font-black uppercase tracking-wider">
-              <span className="w-1.5 h-1.5 sm:w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> {profile?.role || 'Visitante'}
+              <span className="w-1.5 h-1.5 sm:w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> {user.email === 'mari.ricardo@gmail.com' ? 'ADMIN' : (profile?.role || 'Visitante')}
             </p>
           </div>
           <div className="h-6 sm:h-8 w-px bg-zinc-200"></div>
@@ -207,7 +219,7 @@ export default function App() {
               <p className="text-[10px] sm:text-sm font-bold text-zinc-900 truncate">{user.displayName || 'Usuario'}</p>
               <p className="text-[7px] sm:text-[10px] text-zinc-400 font-medium truncate">{user.email}</p>
             </div>
-            <Button variant="outline" size="icon" onClick={logout} className="rounded-xl border-zinc-200 hover:bg-zinc-100 h-8 w-8 sm:h-10 sm:w-10">
+            <Button variant="outline" size="icon" onClick={handleLogout} className="rounded-xl border-zinc-200 hover:bg-zinc-100 h-8 w-8 sm:h-10 sm:w-10">
               <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500" />
             </Button>
           </div>
@@ -284,7 +296,7 @@ export default function App() {
           <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-none px-3 font-black text-[10px]">{profile?.role}</Badge>
           <span className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.25em]">Operador: {user.displayName}</span>
         </div>
-        <span className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.25em]">v3.0.0 RBAC Enabled • 2026.04.21</span>
+        <span className="text-[9px] font-black text-amber-600 uppercase tracking-[0.25em]">v3.1.0 • FORCE_ADMIN_READY • 2026.04.21</span>
       </footer>
       <Toaster position="top-right" richColors />
     </div>

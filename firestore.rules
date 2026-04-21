@@ -27,7 +27,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return hasRole('ADMIN');
+      return hasRole('ADMIN') || (isSignedIn() && request.auth.token.email == 'mari.ricardo@gmail.com');
     }
 
     function isManager() {
