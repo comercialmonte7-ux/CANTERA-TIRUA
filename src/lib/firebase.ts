@@ -127,29 +127,43 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
 
 export const syncUserProfile = async (user: User) => {
   const docRef = doc(db, 'users', user.uid);
-  const docSnap = await getDoc(docRef);
   
+  // Fast path para el administrador principal
+  if (user.email === 'mari.ricardo@gmail.com') {
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      const newUser: UserProfile = {
+        uid: user.uid,
+        email: user.email || '',
+        displayName: user.displayName || '',
+        role: 'ADMIN',
+        createdAt: serverTimestamp(),
+      };
+      await setDoc(docRef, newUser);
+      return newUser;
+    } else {
+      const existingProfile = docSnap.data() as UserProfile;
+      if (existingProfile.role !== 'ADMIN') {
+        await updateDoc(docRef, { role: 'ADMIN' });
+        return { ...existingProfile, role: 'ADMIN' };
+      }
+      return existingProfile;
+    }
+  }
+
+  const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) {
     // Check if we already have an admin (first user becomes admin)
     let role: UserProfile['role'] = 'UNAUTHORIZED';
     
-    // Explicitly set the developer as ADMIN
-    if (user.email === 'mari.ricardo@gmail.com') {
-      role = 'ADMIN';
-    } else {
-      try {
-        // This will only work if the user is already ADMIN or if rules allow it
-        // Since we want the FIRST user to be admin, but rules block list,
-        // we handle the error.
-        // Optimización: Solo intentamos ver si hay AL MENOS un usuario para no cargar toda la colección
-        const q = query(collection(db, 'users'), limit(1));
-        const usersSnap = await getDocs(q);
-        if (usersSnap.empty) role = 'ADMIN';
-      } catch (error) {
-        // If we can't list, assume we are not the first user or just fall back to UNAUTHORIZED
-        console.log('Using default unauthorized role due to restricted list access');
-        role = 'UNAUTHORIZED';
-      }
+    try {
+      // Optimización: Solo intentamos ver si hay AL MENOS un usuario para no cargar toda la colección
+      const q = query(collection(db, 'users'), limit(1));
+      const usersSnap = await getDocs(q);
+      if (usersSnap.empty) role = 'ADMIN';
+    } catch (error) {
+      console.log('Using default unauthorized role due to restricted list access');
+      role = 'UNAUTHORIZED';
     }
     
     const newUser: UserProfile = {
@@ -163,20 +177,7 @@ export const syncUserProfile = async (user: User) => {
     return newUser;
   }
   
-  const existingProfile = docSnap.data() as UserProfile;
-  // Autocorrección de permisos para el administrador principal
-  if (user.email === 'mari.ricardo@gmail.com' && existingProfile.role !== 'ADMIN') {
-    try {
-      console.log('Forzando actualización de rol a ADMIN...');
-      await updateDoc(docRef, { role: 'ADMIN' });
-      console.log('Rol actualizado con éxito.');
-      return { ...existingProfile, role: 'ADMIN' };
-    } catch (e) {
-      console.error('Error al forzar rol ADMIN. Revisa las reglas de seguridad:', e);
-    }
-  }
-  
-  return existingProfile;
+  return docSnap.data() as UserProfile;
 };
 
 export const getAllUserProfiles = (callback: (users: UserProfile[]) => void) => {

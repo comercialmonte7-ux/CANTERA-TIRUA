@@ -229,22 +229,22 @@ export default function App() {
       {/* Navigation (Roles based) */}
       <nav className="bg-white border-b border-zinc-200 px-4 sm:px-8 py-2 overflow-x-auto whitespace-nowrap scrollbar-hide sticky top-[65px] sm:top-[81px] z-40">
         <div className="flex gap-2 sm:gap-4 max-w-7xl mx-auto">
-          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'VIEWER') && (
+          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'VIEWER' || user?.email === 'mari.ricardo@gmail.com') && (
             <NavButton active={activeTab === 'inicio'} onClick={() => setActiveTab('inicio')} icon={<LayoutDashboard className="w-4 h-4" />} label="Inicio" />
           )}
-          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'OPERATOR') && (
+          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'OPERATOR' || user?.email === 'mari.ricardo@gmail.com') && (
             <NavButton active={activeTab === 'despacho'} onClick={() => setActiveTab('despacho')} icon={<Truck className="w-4 h-4" />} label="Despachar" />
           )}
-          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'VIEWER') && (
+          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'VIEWER' || user?.email === 'mari.ricardo@gmail.com') && (
             <NavButton active={activeTab === 'historial'} onClick={() => setActiveTab('historial')} icon={<History className="w-4 h-4" />} label="Historial" />
           )}
-          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER') && (
+          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || user?.email === 'mari.ricardo@gmail.com') && (
             <NavButton active={activeTab === 'inventario'} onClick={() => setActiveTab('inventario')} icon={<Package className="w-4 h-4" />} label="Inventario" />
           )}
-          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER') && (
+          {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || user?.email === 'mari.ricardo@gmail.com') && (
             <NavButton active={activeTab === 'reportes'} onClick={() => setActiveTab('reportes')} icon={<FileText className="w-4 h-4" />} label="Reportes" />
           )}
-          {profile?.role === 'ADMIN' && (
+          {(profile?.role === 'ADMIN' || user?.email === 'mari.ricardo@gmail.com') && (
             <NavButton active={activeTab === 'usuarios'} onClick={() => setActiveTab('usuarios')} icon={<Users className="w-4 h-4" />} label="Usuarios" />
           )}
         </div>
@@ -286,7 +286,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'usuarios' && profile?.role === 'ADMIN' && (
+        {activeTab === 'usuarios' && (profile?.role === 'ADMIN' || user?.email === 'mari.ricardo@gmail.com') && (
           <UsersView />
         )}
       </main>
