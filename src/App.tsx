@@ -84,6 +84,28 @@ export default function App() {
     }
   };
 
+  const handleLogin = async () => {
+    try {
+      setLoading(true);
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error("Login detail:", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        toast.error('Error: Dominio no autorizado en Firebase.', { duration: 8000 });
+        console.error("COPIE Y PEGUE ESTOS DOMINIOS EN 'Authentication > Settings > Authorized domains' EN FIREBASE CONSOLE:");
+        console.log("- " + window.location.hostname);
+        console.log("- ais-dev-he3vkjaxmigjtowenqz7ls-607323100315.us-east1.run.app");
+        console.log("- ais-pre-he3vkjaxmigjtowenqz7ls-607323100315.us-east1.run.app");
+      } else if (error.code === 'auth/popup-blocked') {
+        toast.error('Ventana emergente bloqueada. Por favor, permita popups.');
+      } else {
+        toast.error('Error al iniciar sesión: ' + (error.message || 'Error desconocido'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   React.useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       setLoading(true);
@@ -103,6 +125,13 @@ export default function App() {
       }
       setUser(authUser);
       setLoading(false);
+      
+      // Eliminar el loader estático una vez que React está listo
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(() => loader.remove(), 500);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -170,7 +199,7 @@ export default function App() {
                   Accede al sistema de despacho con tu cuenta corporativa autorizada.
                 </p>
                 <Button 
-                  onClick={signInWithGoogle} 
+                  onClick={handleLogin} 
                   className="w-full h-14 text-base font-bold bg-zinc-950 text-white rounded-2xl hover:bg-zinc-800 flex items-center justify-center gap-4 transition-all active:scale-[0.98] shadow-lg shadow-zinc-200"
                 >
                   <svg className="w-6 h-6" viewBox="0 0 24 24">
@@ -713,6 +742,9 @@ function HistoryView({ dispatches }: { dispatches: Dispatch[] }) {
 function UsersView() {
   const [users, setUsers] = React.useState<UserProfile[]>([]);
   const [updating, setUpdating] = React.useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = React.useState('');
+  const [inviteRole, setInviteRole] = React.useState<UserProfile['role']>('OPERATOR');
+  const [isInviting, setIsInviting] = React.useState(false);
 
   React.useEffect(() => {
     const unsubscribe = getAllUserProfiles(setUsers);
@@ -731,13 +763,62 @@ function UsersView() {
     }
   };
 
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail || !inviteEmail.includes('@')) {
+      toast.error('Ingrese un correo válido');
+      return;
+    }
+
+    setIsInviting(true);
+    try {
+      await import('./lib/firebase').then(m => m.preAuthorizeUser(inviteEmail, inviteRole));
+      toast.success(`Usuario ${inviteEmail} pre-autorizado como ${inviteRole}`);
+      setInviteEmail('');
+    } catch (error) {
+      toast.error('Error al pre-autorizar usuario');
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-zinc-950 p-6 sm:p-8 rounded-2xl sm:rounded-3xl text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-        <div className="relative z-10">
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight mb-2">Administración de Jerarquías</h2>
-          <p className="text-zinc-500 text-[10px] sm:text-xs font-bold uppercase tracking-[0.15em] sm:tracking-[0.2em] max-w-md">Define quiénes pueden registrar metros, visualizar datos o generar informes.</p>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight mb-2">Administración de Jerarquías</h2>
+            <p className="text-zinc-500 text-[10px] sm:text-xs font-bold uppercase tracking-[0.15em] sm:tracking-[0.2em] max-w-md">Define quiénes pueden registrar metros, visualizar datos o generar informes.</p>
+          </div>
+          
+          <form onSubmit={handleInvite} className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 flex flex-col sm:flex-row gap-3">
+             <div className="flex-1">
+                <Input 
+                  placeholder="correo@ejemplo.com"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  className="bg-zinc-950 border-zinc-800 h-10 text-xs rounded-xl text-white"
+                />
+             </div>
+             <select 
+               value={inviteRole}
+               onChange={e => setInviteRole(e.target.value as any)}
+               className="bg-zinc-950 border border-zinc-800 text-white rounded-xl px-3 text-xs font-bold outline-none h-10"
+             >
+                <option value="VIEWER">VIEWER</option>
+                <option value="OPERATOR">OPERATOR</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="ADMIN">ADMIN</option>
+             </select>
+             <Button 
+               disabled={isInviting}
+               type="submit"
+               className="bg-amber-600 hover:bg-amber-500 h-10 rounded-xl px-6 text-[10px] font-black uppercase tracking-wider"
+             >
+                Autorizar
+             </Button>
+          </form>
         </div>
       </div>
 

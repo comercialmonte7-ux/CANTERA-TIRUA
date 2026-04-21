@@ -22,7 +22,32 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Inicialización de Firestore manejando el ID de base de datos
+export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
+  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+  : getFirestore(app);
+
+// Validación de Conexión a Firestore (Requerido por protocolo)
+import { getDocFromServer } from 'firebase/firestore';
+async function testConnection() {
+  try {
+    // Intentamos leer la ruta de prueba que acabamos de habilitar en las reglas
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log('✅ Conexión a Firestore establecida correctamente.');
+  } catch (error: any) {
+    if (error.code === 'permission-denied') {
+      console.warn("Conexión activa, pero el documento de prueba no existe o está protegido (esto es normal).");
+      return;
+    }
+    
+    if (error.message?.includes('the client is offline') || error.code === 'unavailable') {
+      console.error("❌ Error de Conexión: El cliente no puede alcanzar Firestore. Posibles causas: 1) Bloqueo de red/Firewall. 2) Credenciales (API Key/Project ID) incorrectas en firebase-applet-config.json. 3) Firestore no está habilitado en este proyecto.");
+    } else {
+      console.error("Detalle técnico del error de conexión:", error.message || error);
+    }
+  }
+}
+testConnection();
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -151,6 +176,29 @@ export const syncUserProfile = async (user: User) => {
     }
   }
 
+  // Verificamos si ya existe alguien con este correo (invitado o registrado)
+  const qEmail = query(collection(db, 'users'), where('email', '==', user.email), limit(1));
+  const emailSnap = await getDocs(qEmail);
+
+  if (!emailSnap.empty) {
+    const existingDoc = emailSnap.docs[0];
+    const data = existingDoc.data() as UserProfile;
+    
+    // Si el ID es distinto (era una invitación temporal), migramos los datos al ID real del usuario
+    if (existingDoc.id !== user.uid) {
+      const userData = {
+        ...data,
+        uid: user.uid,
+        displayName: user.displayName || data.displayName,
+        updatedAt: serverTimestamp(),
+      };
+      // Usamos un setDoc para crear el nuevo y el borrar el anterior es opcional pero ayuda a limpiar
+      await setDoc(docRef, userData);
+      return userData;
+    }
+    return data;
+  }
+
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) {
     // Check if we already have an admin (first user becomes admin)
@@ -190,6 +238,38 @@ export const getAllUserProfiles = (callback: (users: UserProfile[]) => void) => 
 export const updateUserRole = async (uid: string, role: UserProfile['role']) => {
   const docRef = doc(db, 'users', uid);
   return updateDoc(docRef, { role });
+};
+
+// Permite pre-autorizar a un usuario por correo electrónico
+export const preAuthorizeUser = async (email: string, role: UserProfile['role']) => {
+  // Generamos un ID basado en el email para poder encontrarlo luego si es necesario
+  const tempId = `invited_${email.replace(/[.@]/g, '_')}`;
+  const docRef = doc(db, 'users', tempId);
+  
+  // Verificamos si ya existe alguien con ese correo
+  const q = query(collection(db, 'users'), where('email', '==', email));
+  const snap = await getDocs(q);
+  
+  if (!snap.empty) {
+    const userDoc = snap.docs[0];
+    return updateDoc(doc(db, 'users', userDoc.id), { role });
+  }
+
+  return setDoc(docRef, {
+    uid: tempId,
+    email: email,
+    displayName: 'Usuario Invitado',
+    role: role,
+    createdAt: serverTimestamp(),
+    isInvited: true
+  });
+};
+
+export const deleteUser = async (uid: string) => {
+  // Nota: Esto solo borra el perfil en Firestore, no la cuenta en Auth
+  const docRef = doc(db, 'users', uid);
+  // Por seguridad, los admins no pueden borrarse a sí mismos accidentalmente aquí
+  return updateDoc(docRef, { role: 'UNAUTHORIZED' }); // O usar deleteDoc(docRef)
 };
 
 export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) => {

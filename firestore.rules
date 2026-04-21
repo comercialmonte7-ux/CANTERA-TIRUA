@@ -30,6 +30,11 @@ service cloud.firestore {
       return hasRole('ADMIN') || (isSignedIn() && request.auth.token.email == 'mari.ricardo@gmail.com');
     }
 
+    // Ruta para verificar conectividad
+    match /test/connection {
+      allow read: if true;
+    }
+
     function isManager() {
       return hasRole('MANAGER');
     }
