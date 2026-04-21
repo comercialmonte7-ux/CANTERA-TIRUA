@@ -162,7 +162,15 @@ export const syncUserProfile = async (user: User) => {
     await setDoc(docRef, newUser);
     return newUser;
   }
-  return docSnap.data() as UserProfile;
+  
+  const existingProfile = docSnap.data() as UserProfile;
+  // Autocorrección de permisos para el administrador principal
+  if (user.email === 'mari.ricardo@gmail.com' && existingProfile.role !== 'ADMIN') {
+    await updateDoc(docRef, { role: 'ADMIN' });
+    return { ...existingProfile, role: 'ADMIN' };
+  }
+  
+  return existingProfile;
 };
 
 export const getAllUserProfiles = (callback: (users: UserProfile[]) => void) => {
