@@ -24,43 +24,29 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Inicialización Robusta de Firestore con fallback a Long Polling para evitar errores 'unavailable'
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
 
-// Habilitar Persistencia Offline para velocidad
 if (typeof window !== 'undefined') {
   enableIndexedDbPersistence(db).catch((err) => {
     console.warn('Persistencia offline no disponible:', err.code);
   });
 }
 
-// Validación de Conexión a Firestore
+// Validación de Conexión
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log('✅ [Firebase] Conexión establecida con éxito.');
+    console.log('✅ [Firebase] Conexión establecida.');
   } catch (error: any) {
-    if (error.code === 'permission-denied') {
-      console.warn("⚠️ Conexión Activa: Permisos restringidos (normal).");
-      return;
-    }
-    
-    if (error.code === 'unavailable' || error.code === 'failed-precondition') {
-      console.error(
-        "❌ [Firebase] ERROR DE CONEXIÓN.\n\n" +
-        "1. Revisa que Firestore esté en 'Modo Nativo' en tu consola.\n" +
-        "2. Asegúrate de que las reglas de seguridad estén publicadas.\n" +
-        "3. Verifica que la API Key sea la correcta."
-      );
-    }
+    if (error.code === 'permission-denied') return;
+    console.error("Firebase Connection Error:", error.code);
   }
 }
 testConnection();
 
 const googleProvider = new GoogleAuthProvider();
-
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
 export const logout = () => signOut(auth);
 
@@ -98,8 +84,11 @@ export interface UserProfile {
 
 export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'createdAt'>) => {
   const dispatchRef = doc(collection(db, 'dispatches'));
-  const inventoryId = dispatchData.materialType.toLowerCase().replace(/\s+/g, '-');
+  // USAR GUIONES BAJOS PARA CONSISTENCIA CON SEED
+  const inventoryId = dispatchData.materialType.toLowerCase().replace(/ /g, '_');
   const inventoryRef = doc(db, 'inventory', inventoryId);
+
+  console.log('Iniciando transacción para:', inventoryId);
 
   return runTransaction(db, async (transaction) => {
     const inventoryDoc = await transaction.get(inventoryRef);
@@ -131,13 +120,7 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
 export const getInventory = (callback: (inventory: Inventory[]) => void) => {
   return onSnapshot(collection(db, 'inventory'), (snapshot) => {
     if (snapshot.empty) {
-      const defaultMaterials = [
-        'Base Estabilizada',
-        'Grava 3/4',
-        'Gravilla',
-        'Arena de Planta',
-        'Integral'
-      ];
+      const defaultMaterials = ['Base Estabilizada', 'Grava 3/4', 'Gravilla', 'Arena de Planta', 'Integral'];
       defaultMaterials.forEach(async (mat) => {
         const id = mat.toLowerCase().replace(/ /g, '_');
         await setDoc(doc(db, 'inventory', id), {
@@ -170,10 +153,7 @@ export const updateInventoryStock = async (materialId: string, materialType: str
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   const docRef = doc(db, 'users', uid);
   const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return docSnap.data() as UserProfile;
-  }
-  return null;
+  return docSnap.exists() ? (docSnap.data() as UserProfile) : null;
 };
 
 export const syncUserProfile = async (user: User) => {
@@ -192,7 +172,7 @@ export const syncUserProfile = async (user: User) => {
       } else if (snap.data()?.role !== 'ADMIN') {
         await updateDoc(docRef, { role: 'ADMIN' });
       }
-    }).catch(e => console.warn("Sync ADMIN background error:", e));
+    }).catch(e => console.warn("Admin sync error:", e));
 
     return {
       uid: user.uid,
@@ -209,7 +189,6 @@ export const syncUserProfile = async (user: User) => {
     if (!emailSnap.empty) {
       const existingDoc = emailSnap.docs[0];
       const data = existingDoc.data() as UserProfile;
-      
       if (existingDoc.id !== user.uid) {
         const userData = { ...data, uid: user.uid, updatedAt: serverTimestamp() };
         await setDoc(docRef, userData);
@@ -238,18 +217,13 @@ export const syncUserProfile = async (user: User) => {
 
   return Promise.race([
     fetchProfile(),
-    new Promise<UserProfile>((_, reject) => 
-      setTimeout(() => reject(new Error('TIMEOUT_SYNC')), 6000)
-    )
-  ]).catch(err => {
-    console.error("Sync Error or Timeout:", err);
-    return {
-      uid: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || '',
-      role: 'UNAUTHORIZED' as const
-    };
-  });
+    new Promise<UserProfile>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 6000))
+  ]).catch(() => ({
+    uid: user.uid,
+    email: user.email || '',
+    displayName: user.displayName || '',
+    role: 'UNAUTHORIZED' as const
+  }));
 };
 
 export const getAllUserProfiles = (callback: (users: UserProfile[]) => void) => {
@@ -264,32 +238,9 @@ export const updateUserRole = async (uid: string, role: UserProfile['role']) => 
   return updateDoc(docRef, { role });
 };
 
-export const preAuthorizeUser = async (email: string, role: UserProfile['role']) => {
-  const cleanEmail = email.toLowerCase().trim();
-  const inviteId = `invite_${cleanEmail.replace(/[.@]/g, '_')}`;
-  const docRef = doc(db, 'users', inviteId);
-  
-  const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(1));
-  const snap = await getDocs(q);
-  
-  if (!snap.empty) {
-    const userDoc = snap.docs[0];
-    return updateDoc(doc(db, 'users', userDoc.id), { role });
-  }
-
-  return setDoc(docRef, {
-    uid: inviteId,
-    email: cleanEmail,
-    displayName: 'Usuario Invitado',
-    role: role,
-    createdAt: serverTimestamp(),
-    isInvited: true
-  });
-};
-
 export const deleteUser = async (uid: string) => {
   const docRef = doc(db, 'users', uid);
-  return updateDoc(docRef, { role: 'UNAUTHORIZED' }); 
+  return updateDoc(docRef, { role: 'UNAUTHORIZED' });
 };
 
 export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) => {

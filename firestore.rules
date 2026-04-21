@@ -1,33 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function hasRole(role) {
-      return isSignedIn() && getUserData().role == role;
-    }
-
+    
+    // Función central de administración
     function isAdmin() {
-      return hasRole('ADMIN') || (isSignedIn() && request.auth.token.email == 'mari.ricardo@gmail.com');
+      return (request.auth != null && request.auth.token.email == 'mari.ricardo@gmail.com') || 
+             (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN');
     }
 
     // Ruta para verificar conectividad
@@ -35,78 +14,66 @@ service cloud.firestore {
       allow read: if true;
     }
 
-    function isManager() {
-      return hasRole('MANAGER');
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    function isOperator() {
-      return hasRole('OPERATOR');
+    function hasRole(role) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
     }
 
     function canViewData() {
-      let role = getUserData().role;
-      return role == 'ADMIN' || role == 'MANAGER' || role == 'VIEWER' || role == 'OPERATOR';
-    }
-
-    function canExportReports() {
-      let role = getUserData().role;
-      return role == 'ADMIN' || role == 'MANAGER';
+      return isAdmin() || hasRole('ADMIN') || hasRole('MANAGER') || hasRole('VIEWER') || hasRole('OPERATOR');
     }
 
     function canAddDispatch() {
-      let role = getUserData().role;
-      return role == 'ADMIN' || role == 'MANAGER' || role == 'OPERATOR';
-    }
-
-    function canManageInventory() {
-      let role = getUserData().role;
-      return role == 'ADMIN' || role == 'MANAGER';
+      return isAdmin() || hasRole('ADMIN') || hasRole('MANAGER') || hasRole('OPERATOR');
     }
 
     function isValidDispatch(data) {
-      // PhotoUrl is optional but must be a valid size if present
-      let hasPhoto = data.keys().hasAll(['photoUrl']);
       return data.keys().hasAll(['date', 'truckPlate', 'truckDriver', 'materialVolume', 'materialType', 'creatorId', 'creatorName', 'createdAt']) &&
              data.date is timestamp &&
-             data.truckPlate is string && data.truckPlate.size() > 0 && data.truckPlate.size() <= 20 &&
-             data.truckDriver is string && data.truckDriver.size() > 0 && data.truckDriver.size() <= 100 &&
-             data.materialVolume is number && data.materialVolume > -1000 && // Inventory balance can go negative initially
-             data.materialType is string && data.materialType.size() > 0 &&
+             data.truckPlate is string && data.truckPlate.size() > 0 &&
+             data.truckDriver is string && data.truckDriver.size() > 0 &&
+             data.materialVolume is number &&
+             data.materialType is string &&
              data.creatorId == request.auth.uid &&
-             data.createdAt == request.time &&
-             (!hasPhoto || (data.photoUrl is string && data.photoUrl.size() < 1048576)); // 1MB limit for Base64 check
+             data.createdAt == request.time;
     }
 
     function isValidInventory(data) {
       return data.keys().hasAll(['materialType', 'currentStock', 'unit', 'updatedAt']) &&
-             data.materialType is string && data.materialType.size() > 0 &&
+             data.materialType is string &&
              data.currentStock is number &&
-             data.unit == 'm3' &&
              data.updatedAt == request.time;
     }
 
-    match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
-    }
-
+    // Colección de Despachos
     match /dispatches/{dispatchId} {
-      allow list: if canViewData();
-      allow get: if canViewData();
+      allow read: if canViewData();
       allow create: if canAddDispatch() && isValidDispatch(request.resource.data);
-      allow update: if isAdmin(); 
+      allow update, delete: if isAdmin();
+    }
+
+    // Colección de Inventario
+    match /inventory/{itemId} {
+      allow read: if canViewData();
+      allow write: if canAddDispatch() && isValidInventory(request.resource.data);
+    }
+
+    // Colección de Usuarios/Perfiles
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       allow delete: if isAdmin();
     }
 
-    match /inventory/{materialId} {
-      allow list: if canViewData();
-      allow get: if canViewData();
-      allow create: if canManageInventory() && isValidInventory(request.resource.data);
-      // Update is allowed for operators during dispatch (automated) or for managers
-      allow update: if (canManageInventory() || canAddDispatch()) && isValidInventory(request.resource.data);
-      allow delete: if isAdmin();
+    // Denegación por defecto
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
