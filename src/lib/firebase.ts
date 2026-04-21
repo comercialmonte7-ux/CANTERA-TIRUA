@@ -84,13 +84,30 @@ export interface UserProfile {
 
 export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'createdAt'>) => {
   const dispatchRef = doc(collection(db, 'dispatches'));
+  const counterRef = doc(db, 'counters', 'guides');
+
   // USAR GUIONES BAJOS PARA CONSISTENCIA CON SEED
   const inventoryId = dispatchData.materialType.toLowerCase().replace(/ /g, '_');
   const inventoryRef = doc(db, 'inventory', inventoryId);
 
-  console.log('Iniciando transacción para:', inventoryId);
-
   return runTransaction(db, async (transaction) => {
+    // 1. Obtener y actualizar el contador secuencial
+    const counterSnap = await transaction.get(counterRef);
+    let nextNumber = 1001; // Valor inicial por defecto
+    
+    if (counterSnap.exists()) {
+      nextNumber = (counterSnap.data().lastNumber || 1000) + 1;
+      transaction.update(counterRef, { lastNumber: nextNumber });
+    } else {
+      transaction.set(counterRef, { lastNumber: nextNumber });
+    }
+
+    // Usar el número generado si no viene uno válido
+    const guideNumber = (dispatchData.guideNumber && dispatchData.guideNumber !== 'N/A' && dispatchData.guideNumber !== '') 
+      ? dispatchData.guideNumber 
+      : nextNumber.toString();
+
+    // 2. Gestionar Inventario
     const inventoryDoc = await transaction.get(inventoryRef);
     
     if (inventoryDoc.exists()) {
@@ -108,15 +125,19 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
       });
     }
 
+    // 3. Preparar datos finales
     const finalData = Object.entries(dispatchData)
       .reduce((acc, [key, value]) => {
         if (value !== undefined) acc[key] = value;
         return acc;
-      }, { createdAt: serverTimestamp() } as any);
+      }, { 
+        createdAt: serverTimestamp(),
+        guideNumber // Sobrescribir con el generado o el manual validado
+      } as any);
 
     transaction.set(dispatchRef, finalData);
     
-    return dispatchRef.id;
+    return { dispatchId: dispatchRef.id, guideNumber };
   });
 };
 

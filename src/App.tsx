@@ -469,14 +469,41 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 800 * 1024) { // 800KB limit for Base64 in Firestore
-      toast.error('La imagen es muy pesada. Intente con una resolución menor.');
-      return;
-    }
-
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData({ ...formData, photoBase64: reader.result as string });
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Redimensionar si es muy grande
+        const MAX_WIDTH = 1024;
+        const MAX_HEIGHT = 1024;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        // Comprimir a JPEG con calidad 0.6
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+        setFormData({ ...formData, photoBase64: compressedBase64 });
+      };
+      img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
@@ -515,9 +542,9 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
         dispatchData.photoUrl = formData.photoBase64;
       }
 
-      await createDispatch(dispatchData);
+      const result = await createDispatch(dispatchData);
       
-      toast.success('Guía de despacho registrada correctamente');
+      toast.success(`Guía N° ${result.guideNumber} registrada correctamente`);
       
       setFormData({ 
         truckPlate: '', 
@@ -600,10 +627,10 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
           <div className="space-y-1.5">
             <Label className="text-[9px] sm:text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">N° Guía Correlativo</Label>
             <Input 
-              placeholder="0001" 
+              placeholder="Automático" 
               value={formData.guideNumber}
               onChange={e => setFormData({ ...formData, guideNumber: e.target.value })}
-              className="bg-zinc-50 border-zinc-200 rounded-xl h-12 sm:h-14 text-base sm:text-lg font-bold focus:ring-amber-500 focus:border-amber-500 px-4 sm:px-5"
+              className="bg-zinc-50 border-zinc-200 rounded-xl h-12 sm:h-14 text-base sm:text-lg font-bold focus:ring-amber-500 focus:border-amber-500 px-4 sm:px-5 italic"
             />
           </div>
 
@@ -881,6 +908,7 @@ function HistoryView({
               <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Hora / Guía</TableHead>
               <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Unidad</TableHead>
               <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Detalles</TableHead>
+              <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Operador</TableHead>
               <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10 text-right">Volumen</TableHead>
               {isAdmin && <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10 text-right">Acciones</TableHead>}
             </TableRow>
@@ -916,6 +944,12 @@ function HistoryView({
                     <span className="text-[8px] text-emerald-600 font-bold uppercase truncate">→ {dispatch.destination}</span>
                   </div>
                 </TableCell>
+                <TableCell className="px-4 sm:px-6 py-3">
+                   <div className="flex flex-col">
+                     <span className="text-[10px] font-bold text-zinc-600 truncate">{dispatch.creatorName}</span>
+                     <span className="text-[8px] text-zinc-400 font-black uppercase tracking-widest">Emisor</span>
+                   </div>
+                </TableCell>
                 <TableCell className="px-4 sm:px-6 py-3 text-right">
                   <span className="text-sm font-black text-amber-600">{dispatch.materialVolume.toFixed(1)} <span className="text-[8px] text-zinc-300">m³</span></span>
                 </TableCell>
@@ -945,7 +979,7 @@ function HistoryView({
             ))}
             {filteredDispatches.length === 0 && (
               <TableRow>
-                <TableCell colSpan={isAdmin ? 5 : 4} className="h-40 text-center text-xs text-zinc-400 italic">No se encontraron registros para mostrar en el historial.</TableCell>
+                <TableCell colSpan={isAdmin ? 6 : 5} className="h-40 text-center text-xs text-zinc-400 italic">No se encontraron registros para mostrar en el historial.</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -1184,11 +1218,12 @@ function ReportsCard({ dispatches }: { dispatches: Dispatch[] }) {
         d.materialVolume.toString(),
         d.materialType,
         d.destination,
-        d.guideNumber
+        d.guideNumber,
+        d.creatorName
       ]);
 
       autoTable(doc, {
-        head: [['Fecha', 'Patente', 'Chofer', 'm3', 'Material', 'Destino', 'Guía']],
+        head: [['Fecha', 'Patente', 'Chofer', 'm3', 'Material', 'Destino', 'Guía', 'Operador']],
         body: body,
         startY: 35,
         theme: 'striped',
