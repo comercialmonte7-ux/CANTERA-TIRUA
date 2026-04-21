@@ -477,7 +477,7 @@ function DispatchForm({ user, dispatches }: { user: User, dispatches: Dispatch[]
 
     setLoading(true);
     try {
-      const dispatchData = {
+      const dispatchData: any = {
         date: new Date(),
         truckPlate: formData.truckPlate.trim().toUpperCase(),
         truckDriver: formData.truckDriver.trim(),
@@ -486,10 +486,13 @@ function DispatchForm({ user, dispatches }: { user: User, dispatches: Dispatch[]
         destination: formData.destination.trim() || 'No especificado',
         guideNumber: formData.guideNumber.trim() || 'N/A',
         notes: formData.notes.trim() || '',
-        photoUrl: formData.photoBase64 || undefined,
         creatorId: user.uid,
         creatorName: user.displayName || user.email || 'Usuario'
       };
+
+      if (formData.photoBase64) {
+        dispatchData.photoUrl = formData.photoBase64;
+      }
 
       await createDispatch(dispatchData);
       

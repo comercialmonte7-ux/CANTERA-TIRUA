@@ -108,10 +108,13 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
       });
     }
 
-    transaction.set(dispatchRef, {
-      ...dispatchData,
-      createdAt: serverTimestamp(),
-    });
+    const finalData = Object.entries(dispatchData)
+      .reduce((acc, [key, value]) => {
+        if (value !== undefined) acc[key] = value;
+        return acc;
+      }, { createdAt: serverTimestamp() } as any);
+
+    transaction.set(dispatchRef, finalData);
     
     return dispatchRef.id;
   });
@@ -236,6 +239,28 @@ export const getAllUserProfiles = (callback: (users: UserProfile[]) => void) => 
 export const updateUserRole = async (uid: string, role: UserProfile['role']) => {
   const docRef = doc(db, 'users', uid);
   return updateDoc(docRef, { role });
+};
+
+export const preAuthorizeUser = async (email: string, role: UserProfile['role']) => {
+  // Buscamos si ya existe por email
+  const q = query(collection(db, 'users'), where('email', '==', email), limit(1));
+  const snap = await getDocs(q);
+  
+  if (!snap.empty) {
+    const userDoc = snap.docs[0];
+    return updateDoc(doc(db, 'users', userDoc.id), { role });
+  } else {
+    // Si no existe, creamos un perfil preliminar usando el email como ID temporal o generamos uno
+    // En Firestore, es mejor crear un documento con un ID generado si no tenemos el UID
+    const newUserRef = doc(collection(db, 'users'));
+    return setDoc(newUserRef, {
+      uid: newUserRef.id,
+      email,
+      displayName: 'Invitado',
+      role,
+      createdAt: serverTimestamp(),
+    });
+  }
 };
 
 export const deleteUser = async (uid: string) => {
