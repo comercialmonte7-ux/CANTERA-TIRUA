@@ -1,0 +1,6 @@
+{
+  "name": "Cantera Tirua - Gestión de Despacho",
+  "description": "Sistema profesional para el control y gestión de salida de áridos, con reportes diarios, registro de camiones y guías de despacho.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": []
+}

@@ -1,0 +1,100 @@
+{
+  "entities": {
+    "Dispatch": {
+      "title": "Dispatch",
+      "description": "Un registro de salida de material (arido) de la cantera.",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Fecha y hora del despacho"
+        },
+        "truckPlate": {
+          "type": "string",
+          "description": "Patente del camión"
+        },
+        "truckDriver": {
+          "type": "string",
+          "description": "Nombre del chofer"
+        },
+        "materialVolume": {
+          "type": "number",
+          "description": "Metros cúbicos de material"
+        },
+        "materialType": {
+          "type": "string",
+          "description": "Tipo de árido"
+        },
+        "destination": {
+          "type": "string",
+          "description": "Puerto o destino de la carga"
+        },
+        "guideNumber": {
+          "type": "string",
+          "description": "Número de la guía de despacho"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notas adicionales"
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "URL o Base64 de la foto de evidencia"
+        },
+        "creatorId": {
+          "type": "string",
+          "description": "ID del usuario que registró el despacho"
+        },
+        "creatorName": {
+          "type": "string",
+          "description": "Nombre del usuario que registró el despacho"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["date", "truckPlate", "truckDriver", "materialVolume", "materialType", "creatorId"]
+    },
+    "Inventory": {
+      "title": "Inventory",
+      "description": "Estado actual del stock de materiales.",
+      "type": "object",
+      "properties": {
+        "materialType": { "type": "string" },
+        "currentStock": { "type": "number" },
+        "unit": { "type": "string", "default": "m3" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["materialType", "currentStock"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Perfil de usuario con rol y permisos.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["ADMIN", "MANAGER", "OPERATOR", "VIEWER"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/dispatches/{dispatchId}": {
+      "schema": "Dispatch",
+      "description": "Colección de despachos de material"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Perfiles y roles de usuario"
+    },
+    "/inventory/{materialId}": {
+      "schema": "Inventory",
+      "description": "Control de stock de materiales"
+    }
+  }
+}
