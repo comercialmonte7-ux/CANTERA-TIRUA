@@ -5,6 +5,9 @@ import {
   logout, 
   createDispatch, 
   getRecentDispatches, 
+  getRegistrySuggestions,
+  updateDispatch,
+  deleteDispatch,
   Dispatch,
   UserProfile,
   syncUserProfile,
@@ -32,6 +35,8 @@ import {
   Camera,
   Package,
   Trash2,
+  Edit,
+  X,
   RefreshCw,
   TrendingUp
 } from 'lucide-react';
@@ -69,6 +74,8 @@ export default function App() {
   const [dispatches, setDispatches] = React.useState<Dispatch[]>([]);
   const [inventory, setInventory] = React.useState<Inventory[]>([]);
   const [activeTab, setActiveTab] = React.useState('inicio');
+  const [suggestions, setSuggestions] = React.useState({ plates: [], drivers: [], destinations: [] });
+  const [editingDispatch, setEditingDispatch] = React.useState<Dispatch | null>(null);
 
   const formattedDate = React.useMemo(() => format(new Date(), "EEEE, d 'de' MMMM", { locale: es }), []);
 
@@ -171,9 +178,11 @@ export default function App() {
     if (user) {
       const unsubDispatches = getRecentDispatches(setDispatches);
       const unsubInventory = getInventory(setInventory);
+      const unsubSuggestions = getRegistrySuggestions(setSuggestions);
       return () => {
         unsubDispatches();
         unsubInventory();
+        unsubSuggestions();
       };
     }
   }, [user]);
@@ -329,13 +338,17 @@ export default function App() {
 
         {activeTab === 'despacho' && (
           <div className="max-w-3xl mx-auto">
-            <DispatchForm user={user} dispatches={dispatches} />
+            <DispatchForm user={user} suggestions={suggestions} />
           </div>
         )}
 
         {activeTab === 'historial' && (
           <div className="h-full">
-            <HistoryView dispatches={dispatches} />
+            <HistoryView 
+              dispatches={dispatches} 
+              isAdmin={profile?.role === 'ADMIN' || user?.email === 'mari.ricardo@gmail.com'} 
+              onEdit={setEditingDispatch}
+            />
           </div>
         )}
 
@@ -359,6 +372,14 @@ export default function App() {
         <span className="text-[9px] font-black text-amber-600 uppercase tracking-[0.25em]">v3.1.0 • FORCE_ADMIN_READY • 2026.04.21</span>
       </footer>
       <Toaster position="top-right" richColors />
+      {editingDispatch && (
+        <EditDispatchModal 
+          dispatch={editingDispatch} 
+          onClose={() => setEditingDispatch(null)} 
+          onUpdate={updateDispatch}
+          suggestions={suggestions}
+        />
+      )}
     </div>
   );
 }
@@ -421,14 +442,14 @@ function DashboardStats({ dispatches }: { dispatches: Dispatch[] }) {
   );
 }
 
-function DispatchForm({ user, dispatches }: { user: User, dispatches: Dispatch[] }) {
+function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates: string[], drivers: string[], destinations: string[] } }) {
   const [loading, setLoading] = React.useState(false);
   const [isCustomMaterial, setIsCustomMaterial] = React.useState(false);
   
   // Extraer valores únicos para sugerencias
-  const suggestedPlates = Array.from(new Set(dispatches.map(d => d.truckPlate))).sort();
-  const suggestedDrivers = Array.from(new Set(dispatches.map(d => d.truckDriver))).sort();
-  const suggestedDestinations = Array.from(new Set(dispatches.map(d => d.destination))).sort();
+  const suggestedPlates = suggestions.plates;
+  const suggestedDrivers = suggestions.drivers;
+  const suggestedDestinations = suggestions.destinations;
 
   const [formData, setFormData] = React.useState({
     truckPlate: '',
@@ -689,7 +710,135 @@ function DispatchForm({ user, dispatches }: { user: User, dispatches: Dispatch[]
   );
 }
 
-function HistoryView({ dispatches }: { dispatches: Dispatch[] }) {
+function EditDispatchModal({ 
+  dispatch, 
+  onClose, 
+  onUpdate, 
+  suggestions 
+}: { 
+  dispatch: Dispatch, 
+  onClose: () => void, 
+  onUpdate: (id: string, data: Partial<Dispatch>) => void,
+  suggestions: { plates: string[], drivers: string[], destinations: string[] }
+}) {
+  const [formData, setFormData] = React.useState({ ...dispatch });
+  const [loading, setLoading] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatch.id) return;
+    setLoading(true);
+    try {
+      await onUpdate(dispatch.id, formData);
+      toast.success('Despacho actualizado correctamente');
+      onClose();
+    } catch (error) {
+      toast.error('Error al actualizar despacho');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <Card className="w-full max-w-2xl">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Editar Guía de Salida</CardTitle>
+            <CardDescription>Modifica los datos de la guía #{dispatch.guideNumber}</CardDescription>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} disabled={loading}>
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <form onSubmit={handleSubmit}>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Patente del Camión</Label>
+                <Input 
+                  value={formData.truckPlate} 
+                  onChange={e => setFormData({...formData, truckPlate: e.target.value.toUpperCase()})}
+                  list="edit-plates"
+                  required
+                />
+                <datalist id="edit-plates">
+                  {suggestions.plates.map(p => <option key={p} value={p} />)}
+                </datalist>
+              </div>
+              <div className="space-y-2">
+                <Label>Nombre del Chofer</Label>
+                <Input 
+                  value={formData.truckDriver} 
+                  onChange={e => setFormData({...formData, truckDriver: e.target.value})}
+                  list="edit-drivers"
+                  required
+                />
+                <datalist id="edit-drivers">
+                  {suggestions.drivers.map(d => <option key={d} value={d} />)}
+                </datalist>
+              </div>
+              <div className="space-y-2">
+                <Label>Volumen (m³)</Label>
+                <Input 
+                  type="number" 
+                  step="0.01"
+                  value={formData.materialVolume} 
+                  onChange={e => setFormData({...formData, materialVolume: Number(e.target.value)})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Destino</Label>
+                <Input 
+                  value={formData.destination} 
+                  onChange={e => setFormData({...formData, destination: e.target.value})}
+                  list="edit-destinations"
+                  required
+                />
+                <datalist id="edit-destinations">
+                  {suggestions.destinations.map(d => <option key={d} value={d} />)}
+                </datalist>
+              </div>
+              <div className="space-y-2">
+                <Label>Número de Guía</Label>
+                <Input 
+                  value={formData.guideNumber} 
+                  onChange={e => setFormData({...formData, guideNumber: e.target.value})}
+                  required
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notas</Label>
+              <Input 
+                value={formData.notes || ''} 
+                onChange={e => setFormData({...formData, notes: e.target.value})}
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Guardar Cambios
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
+function HistoryView({ 
+  dispatches, 
+  isAdmin = false, 
+  onEdit 
+}: { 
+  dispatches: Dispatch[], 
+  isAdmin?: boolean,
+  onEdit?: (dispatch: Dispatch) => void
+}) {
   const [searchTerm, setSearchTerm] = React.useState('');
   
   const filteredDispatches = dispatches.filter(d => 
@@ -698,6 +847,16 @@ function HistoryView({ dispatches }: { dispatches: Dispatch[] }) {
     d.materialType.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.destination.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('¿Estás seguro de eliminar este despacho? El stock será devuelto al inventario.')) return;
+    try {
+      await deleteDispatch(id);
+      toast.success('Despacho eliminado correctamente');
+    } catch (error) {
+      toast.error('Error al eliminar despacho');
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl sm:rounded-[2rem] border border-zinc-200 shadow-sm flex flex-col h-full min-h-[400px]">
@@ -723,6 +882,7 @@ function HistoryView({ dispatches }: { dispatches: Dispatch[] }) {
               <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Unidad</TableHead>
               <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Detalles</TableHead>
               <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10 text-right">Volumen</TableHead>
+              {isAdmin && <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10 text-right">Acciones</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -759,11 +919,33 @@ function HistoryView({ dispatches }: { dispatches: Dispatch[] }) {
                 <TableCell className="px-4 sm:px-6 py-3 text-right">
                   <span className="text-sm font-black text-amber-600">{dispatch.materialVolume.toFixed(1)} <span className="text-[8px] text-zinc-300">m³</span></span>
                 </TableCell>
+                {isAdmin && (
+                  <TableCell className="px-4 sm:px-6 py-3 text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 text-zinc-400 hover:text-amber-600"
+                        onClick={() => onEdit?.(dispatch)}
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 text-zinc-400 hover:text-red-600"
+                        onClick={() => dispatch.id && handleDelete(dispatch.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
             {filteredDispatches.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="h-40 text-center text-xs text-zinc-400 italic">No se encontraron registros para mostrar en el historial.</TableCell>
+                <TableCell colSpan={isAdmin ? 5 : 4} className="h-40 text-center text-xs text-zinc-400 italic">No se encontraron registros para mostrar en el historial.</TableCell>
               </TableRow>
             )}
           </TableBody>

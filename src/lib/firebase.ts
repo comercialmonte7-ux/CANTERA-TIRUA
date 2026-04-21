@@ -268,6 +268,112 @@ export const deleteUser = async (uid: string) => {
   return updateDoc(docRef, { role: 'UNAUTHORIZED' });
 };
 
+export const deleteDispatch = async (dispatchId: string) => {
+  const dispatchRef = doc(db, 'dispatches', dispatchId);
+  
+  return runTransaction(db, async (transaction) => {
+    const dispatchSnap = await transaction.get(dispatchRef);
+    if (!dispatchSnap.exists()) throw new Error('Despacho no encontrado');
+    
+    const dispatchData = dispatchSnap.data();
+    const inventoryId = (dispatchData.materialType as string).toLowerCase().replace(/ /g, '_');
+    const inventoryRef = doc(db, 'inventory', inventoryId);
+    
+    const inventorySnap = await transaction.get(inventoryRef);
+    if (inventorySnap.exists()) {
+      const currentStock = inventorySnap.data().currentStock;
+      transaction.update(inventoryRef, {
+        currentStock: currentStock + dispatchData.materialVolume,
+        updatedAt: serverTimestamp()
+      });
+    }
+    
+    transaction.delete(dispatchRef);
+  });
+};
+
+export const updateDispatch = async (dispatchId: string, newData: Partial<Dispatch>) => {
+  const dispatchRef = doc(db, 'dispatches', dispatchId);
+  
+  return runTransaction(db, async (transaction) => {
+    const dispatchSnap = await transaction.get(dispatchRef);
+    if (!dispatchSnap.exists()) throw new Error('Despacho no encontrado');
+    
+    const oldData = dispatchSnap.data() as Dispatch;
+    const oldMaterialId = oldData.materialType.toLowerCase().replace(/ /g, '_');
+    const newMaterialId = (newData.materialType || oldData.materialType).toLowerCase().replace(/ /g, '_');
+    
+    // Si cambió el volumen o el material, ajustamos stock
+    if (newData.materialVolume !== undefined || newData.materialType !== undefined) {
+      const oldVol = oldData.materialVolume;
+      const newVol = newData.materialVolume !== undefined ? newData.materialVolume : oldVol;
+      
+      if (oldMaterialId === newMaterialId) {
+        // Mismo material, solo cambia volumen
+        const invRef = doc(db, 'inventory', oldMaterialId);
+        const invSnap = await transaction.get(invRef);
+        if (invSnap.exists()) {
+          const currentStock = invSnap.data().currentStock;
+          const diff = oldVol - newVol; 
+          transaction.update(invRef, {
+            currentStock: currentStock + diff,
+            updatedAt: serverTimestamp()
+          });
+        }
+      } else {
+        // Cambió el material, revertimos viejo y aplicamos nuevo
+        const oldInvRef = doc(db, 'inventory', oldMaterialId);
+        const newInvRef = doc(db, 'inventory', newMaterialId);
+        
+        const oldInvSnap = await transaction.get(oldInvRef);
+        if (oldInvSnap.exists()) {
+          transaction.update(oldInvRef, {
+            currentStock: oldInvSnap.data().currentStock + oldVol,
+            updatedAt: serverTimestamp()
+          });
+        }
+        
+        const newInvSnap = await transaction.get(newInvRef);
+        if (newInvSnap.exists()) {
+          transaction.update(newInvRef, {
+            currentStock: newInvSnap.data().currentStock - newVol,
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+    }
+    
+    const cleanUpdate = Object.entries(newData).reduce((acc, [key, value]) => {
+      if (value !== undefined) acc[key] = value;
+      return acc;
+    }, {} as any);
+    
+    transaction.update(dispatchRef, cleanUpdate);
+  });
+};
+
+export const getRegistrySuggestions = (callback: (suggestions: { plates: string[], drivers: string[], destinations: string[] }) => void) => {
+  const q = query(collection(db, 'dispatches'), orderBy('createdAt', 'desc'), limit(300));
+  return onSnapshot(q, (snapshot) => {
+    const plates = new Set<string>();
+    const drivers = new Set<string>();
+    const destinations = new Set<string>();
+    
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.truckPlate) plates.add(data.truckPlate.toUpperCase());
+      if (data.truckDriver) drivers.add(data.truckDriver);
+      if (data.destination) destinations.add(data.destination);
+    });
+    
+    callback({
+      plates: Array.from(plates).sort(),
+      drivers: Array.from(drivers).sort(),
+      destinations: Array.from(destinations).sort()
+    });
+  });
+};
+
 export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) => {
   const q = query(collection(db, 'dispatches'), orderBy('createdAt', 'desc'), limit(50));
   return onSnapshot(q, (snapshot) => {
