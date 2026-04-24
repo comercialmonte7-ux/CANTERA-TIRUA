@@ -442,22 +442,34 @@ export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) 
 };
 
 export const repairGuides = async () => {
+  // Obtenemos todos los despachos ordenados por fecha de creación (ASC)
   const q = query(collection(db, 'dispatches'), orderBy('createdAt', 'asc'));
   const snap = await getDocs(q);
   
-  const naDispatches = snap.docs.filter(d => {
-    const gn = d.data().guideNumber;
-    return gn === 'N/A' || gn === 'S/N' || !gn;
-  });
-
-  if (naDispatches.length === 0) return 0;
+  if (snap.empty) return 0;
 
   let count = 0;
-  for (const docSnap of naDispatches) {
+  const batchSize = 100; // Podríamos usar batches si son muchos, por ahora secuencial es seguro
+  
+  for (const docSnap of snap.docs) {
     count++;
     const padded = count.toString().padStart(3, '0');
-    await updateDoc(docSnap.ref, { guideNumber: padded });
+    
+    // Solo actualizamos si el número es diferente para ahorrar escrituras
+    if (docSnap.data().guideNumber !== padded) {
+      await updateDoc(docSnap.ref, { 
+        guideNumber: padded,
+        updatedAt: serverTimestamp()
+      });
+    }
   }
+  
+  // Sincronizar el contador global con el último número asignado
+  const counterRef = doc(db, 'counters', 'guides');
+  await setDoc(counterRef, { 
+    lastNumber: count,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
   
   return count;
 };

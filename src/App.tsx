@@ -995,7 +995,13 @@ function HistoryView({
     d.materialType.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (d.guideNumber && d.guideNumber.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  ).sort((a, b) => {
+    // Primero por fecha de despacho descendente
+    const dateCompare = b.date.getTime() - a.date.getTime();
+    if (dateCompare !== 0) return dateCompare;
+    // Si la fecha es igual, por número de guía descendente para mantener orden lógico en duplicados
+    return (b.guideNumber || '').localeCompare(a.guideNumber || '', undefined, { numeric: true });
+  });
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('¿Estás seguro de eliminar este despacho? El stock será devuelto al inventario.')) return;
@@ -1051,13 +1057,18 @@ function HistoryView({
               size="sm" 
               className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600 hover:bg-amber-50"
               onClick={async () => {
-                if (window.confirm('¿Seguro que desea reparar las guías S/N? Se numerarán de 001 en adelante según fecha.')) {
-                  const count = await repairGuides();
-                  toast.success(`${count} guías reparadas`);
+                if (window.confirm('¿Seguro que desea renumerar TODAS las guías? Se asignarán números correlativos (001, 002...) según el orden cronológico actual y se reseteará el contador global.')) {
+                  const toastId = toast.loading('Renumerando guías...');
+                  try {
+                    const count = await repairGuides();
+                    toast.success(`${count} guías renumeradas correctamente`, { id: toastId });
+                  } catch (error) {
+                    toast.error('Error al renumerar guías', { id: toastId });
+                  }
                 }
               }}
             >
-              Reparar Guías S/N
+              Renumerar Todo (001...)
             </Button>
           )}
           <div className="w-full sm:w-64 relative">
