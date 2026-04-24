@@ -432,3 +432,24 @@ export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) 
     callback(dispatches);
   });
 };
+
+export const repairGuides = async () => {
+  const q = query(collection(db, 'dispatches'), orderBy('createdAt', 'asc'));
+  const snap = await getDocs(q);
+  
+  const naDispatches = snap.docs.filter(d => {
+    const gn = d.data().guideNumber;
+    return gn === 'N/A' || gn === 'S/N' || !gn;
+  });
+
+  if (naDispatches.length === 0) return 0;
+
+  let count = 0;
+  for (const docSnap of naDispatches) {
+    count++;
+    const padded = count.toString().padStart(3, '0');
+    await updateDoc(docSnap.ref, { guideNumber: padded });
+  }
+  
+  return count;
+};

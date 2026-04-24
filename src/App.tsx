@@ -8,6 +8,7 @@ import {
   getRegistrySuggestions,
   updateDispatch,
   deleteDispatch,
+  repairGuides,
   Dispatch,
   UserProfile,
   syncUserProfile,
@@ -1020,13 +1021,30 @@ function HistoryView({
           <h3 className="text-[10px] sm:text-xs font-black text-zinc-800 uppercase tracking-[0.2em]">Registro Histórico</h3>
           <p className="text-[8px] sm:text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Últimos movimientos</p>
         </div>
-        <div className="w-full sm:w-64 relative">
-          <Input 
-            placeholder="Buscar patente, chofer..." 
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="h-9 text-xs border-zinc-200 rounded-xl pl-3 w-full"
-          />
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {isAdmin && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600 hover:bg-amber-50"
+              onClick={async () => {
+                if (window.confirm('¿Seguro que desea reparar las guías S/N? Se numerarán de 001 en adelante según fecha.')) {
+                  const count = await repairGuides();
+                  toast.success(`${count} guías reparadas`);
+                }
+              }}
+            >
+              Reparar Guías S/N
+            </Button>
+          )}
+          <div className="w-full sm:w-64 relative">
+            <Input 
+              placeholder="Buscar patente, chofer..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="h-9 text-xs border-zinc-200 rounded-xl pl-3 w-full"
+            />
+          </div>
         </div>
       </div>
       <div className="flex-1 overflow-x-auto pb-4">
