@@ -83,7 +83,7 @@ export interface UserProfile {
   createdAt?: any;
 }
 
-export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'createdAt'>) => {
+export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'createdAt' | 'guideNumber'> & { guideNumber?: string }) => {
   const dispatchRef = doc(collection(db, 'dispatches'));
   const counterRef = doc(db, 'counters', 'guides');
 
@@ -134,6 +134,10 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
 
     const finalData = Object.entries(dispatchData)
       .reduce((acc, [key, value]) => {
+        if (key === 'createdAt' && value) {
+          acc[key] = value;
+          return acc;
+        }
         if (value !== undefined) acc[key] = value;
         return acc;
       }, { 

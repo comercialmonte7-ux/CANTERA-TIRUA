@@ -826,7 +826,9 @@ function EditDispatchModal({
     const toastId = toast.loading(`Duplicando despacho ${count} veces...`);
     
     try {
-      const { id, createdAt, ...baseData } = formData;
+      // Mantenemos createdAt para conservar fecha/hora
+      // Eliminamos id y guideNumber para nuevos correlativos
+      const { id, guideNumber, ...baseData } = formData;
       
       for (let i = 0; i < count; i++) {
         await createDispatch(baseData);
@@ -967,7 +969,8 @@ function HistoryView({
     d.truckPlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.truckDriver.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.materialType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.destination.toLowerCase().includes(searchTerm.toLowerCase())
+    d.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (d.guideNumber && d.guideNumber.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const handleDelete = async (id: string) => {
@@ -993,8 +996,10 @@ function HistoryView({
     const toastId = toast.loading(`Duplicando despacho ${count} veces...`);
     
     try {
-      // Preparar data base del despacho a duplicar (sin ID ni createdAt)
-      const { id, createdAt, ...baseData } = dispatch;
+      // Preparar data base del despacho a duplicar
+      // Mantenemos createdAt para conservar la misma fecha/hora
+      // Eliminamos id y guideNumber para que se generen nuevos
+      const { id, guideNumber, ...baseData } = dispatch;
       
       // Realizar duplicaciones secuencialmente para asegurar correlativos correctos
       for (let i = 0; i < count; i++) {
@@ -1042,7 +1047,7 @@ function HistoryView({
                 <TableCell className="px-4 sm:px-6 py-3">
                   <div className="flex flex-col">
                     <span className="text-[10px] font-mono font-bold text-zinc-500">{format(dispatch.date, "HH:mm")}</span>
-                    <span className="text-[8px] font-black text-zinc-300 uppercase tracking-tighter">ID: {dispatch.guideNumber}</span>
+                    <span className="text-[9px] font-black text-zinc-700 uppercase tracking-tighter bg-zinc-100 px-1 rounded inline-block w-fit mt-0.5">N° {dispatch.guideNumber}</span>
                   </div>
                 </TableCell>
                 <TableCell className="px-4 sm:px-6 py-3">
