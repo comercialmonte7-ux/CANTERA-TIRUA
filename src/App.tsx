@@ -38,7 +38,8 @@ import {
   Edit,
   X,
   RefreshCw,
-  TrendingUp
+  TrendingUp,
+  Copy
 } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from './components/ui/card';
@@ -811,6 +812,36 @@ function EditDispatchModal({
     }
   };
 
+  const handleDuplicate = async () => {
+    const countStr = window.prompt('¿Cuántas veces desea duplicar este despacho? (Mantendrá la misma FECHA y HORA)', '1');
+    const count = parseInt(countStr || '0');
+    
+    if (isNaN(count) || count <= 0) return;
+    if (count > 20) {
+      toast.error('Por seguridad, solo puede duplicar hasta 20 veces a la vez');
+      return;
+    }
+
+    setLoading(true);
+    const toastId = toast.loading(`Duplicando despacho ${count} veces...`);
+    
+    try {
+      const { id, createdAt, ...baseData } = formData;
+      
+      for (let i = 0; i < count; i++) {
+        await createDispatch(baseData);
+      }
+      
+      toast.success(`${count} despachos duplicados correctamente`, { id: toastId });
+      onClose();
+    } catch (error) {
+      console.error('Error duplicando:', error);
+      toast.error('Error al duplicar despachos', { id: toastId });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
       <Card className="w-full max-w-2xl">
@@ -896,12 +927,24 @@ function EditDispatchModal({
               />
             </div>
           </CardContent>
-          <CardFooter className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              Guardar Cambios
+          <CardFooter className="flex justify-between items-center gap-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={handleDuplicate} 
+              disabled={loading}
+              className="text-amber-600 border-amber-200 hover:bg-amber-50"
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              Duplicar X veces
             </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancelar</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Guardar Cambios
+              </Button>
+            </div>
           </CardFooter>
         </form>
       </Card>
@@ -934,6 +977,34 @@ function HistoryView({
       toast.success('Despacho eliminado correctamente');
     } catch (error) {
       toast.error('Error al eliminar despacho');
+    }
+  };
+
+  const handleDuplicate = async (dispatch: Dispatch) => {
+    const countStr = window.prompt('¿Cuántas veces desea duplicar este despacho? (Mantendrá la misma FECHA y HORA)', '1');
+    const count = parseInt(countStr || '0');
+    
+    if (isNaN(count) || count <= 0) return;
+    if (count > 20) {
+      toast.error('Por seguridad, solo puede duplicar hasta 20 veces a la vez');
+      return;
+    }
+
+    const toastId = toast.loading(`Duplicando despacho ${count} veces...`);
+    
+    try {
+      // Preparar data base del despacho a duplicar (sin ID ni createdAt)
+      const { id, createdAt, ...baseData } = dispatch;
+      
+      // Realizar duplicaciones secuencialmente para asegurar correlativos correctos
+      for (let i = 0; i < count; i++) {
+        await createDispatch(baseData);
+      }
+      
+      toast.success(`${count} despachos duplicados correctamente`, { id: toastId });
+    } catch (error) {
+      console.error('Error duplicando:', error);
+      toast.error('Error al duplicar despachos', { id: toastId });
     }
   };
 
@@ -1013,6 +1084,15 @@ function HistoryView({
                 {isAdmin && (
                   <TableCell className="px-4 sm:px-6 py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 text-zinc-400 hover:text-amber-600"
+                        title="Duplicar Despacho"
+                        onClick={() => handleDuplicate(dispatch)}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
                       <Button 
                         variant="ghost" 
                         size="icon" 
