@@ -60,6 +60,7 @@ export interface Dispatch {
   destination: string;
   guideNumber: string;
   notes?: string;
+  observations?: string;
   photoUrl?: string; 
   creatorId: string;
   creatorName: string;

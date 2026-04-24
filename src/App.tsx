@@ -462,6 +462,7 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
     destination: '',
     guideNumber: '',
     notes: '',
+    observations: '',
     photoBase64: ''
   });
 
@@ -541,6 +542,7 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
         destination: formData.destination.trim() || 'No especificado',
         guideNumber: formData.guideNumber.trim() || 'N/A',
         notes: formData.notes.trim() || '',
+        observations: formData.observations.trim() || '',
         creatorId: user.uid,
         creatorName: user.displayName || user.email || 'Usuario'
       };
@@ -564,6 +566,7 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
         destination: '',
         guideNumber: '',
         notes: '',
+        observations: '',
         photoBase64: ''
       });
       setIsCustomMaterial(false);
@@ -713,6 +716,16 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
                 <option>Bolón Seleccionado</option>
               </select>
             )}
+          </div>
+
+          <div className="sm:col-span-2 space-y-1.5">
+            <Label className="text-[9px] sm:text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Observaciones / Comentarios (Opcional)</Label>
+            <Input 
+              placeholder="Detalles adicionales, condiciones de entrega, etc." 
+              value={formData.observations}
+              onChange={e => setFormData({ ...formData, observations: e.target.value })}
+              className="bg-zinc-50 border-zinc-200 rounded-xl h-12 sm:h-14 text-base font-bold focus:ring-amber-500 focus:border-amber-500 px-4 sm:px-5"
+            />
           </div>
 
           <div className="sm:col-span-2 space-y-1.5">
@@ -869,6 +882,13 @@ function EditDispatchModal({
               </div>
             </div>
             <div className="space-y-2">
+              <Label>Observaciones (Opcional)</Label>
+              <Input 
+                value={formData.observations || ''} 
+                onChange={e => setFormData({...formData, observations: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
               <Label>Notas</Label>
               <Input 
                 value={formData.notes || ''} 
@@ -974,6 +994,11 @@ function HistoryView({
                     </div>
                     <span className="text-[8px] text-zinc-400 font-black uppercase tracking-widest truncate">{dispatch.materialType}</span>
                     <span className="text-[8px] text-emerald-600 font-bold uppercase truncate">→ {dispatch.destination}</span>
+                    {dispatch.observations && (
+                      <span className="text-[8px] text-amber-700 italic truncate mt-1 bg-amber-50 px-1 rounded animate-in fade-in slide-in-from-left-1">
+                        Obs: {dispatch.observations}
+                      </span>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="px-4 sm:px-6 py-3">
@@ -1208,6 +1233,7 @@ function ReportsCard({ dispatches }: { dispatches: Dispatch[] }) {
         Destino: d.destination,
         Guia: d.guideNumber,
         Registrado_Por: d.creatorName,
+        Observaciones: d.observations || '',
         Notas: d.notes || ''
       }));
 
@@ -1251,11 +1277,12 @@ function ReportsCard({ dispatches }: { dispatches: Dispatch[] }) {
         d.materialType,
         d.destination,
         d.guideNumber,
-        d.creatorName
+        d.creatorName,
+        d.observations || ''
       ]);
 
       autoTable(doc, {
-        head: [['Fecha', 'Patente', 'Chofer', 'm3', 'Material', 'Destino', 'Guía', 'Operador']],
+        head: [['Fecha', 'Patente', 'Chofer', 'm3', 'Material', 'Destino', 'Guía', 'Operador', 'Obs']],
         body: body,
         startY: 35,
         theme: 'striped',
