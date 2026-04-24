@@ -541,7 +541,7 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
         materialVolume: volume,
         materialType: materialType.trim(),
         destination: formData.destination.trim() || 'No especificado',
-        guideNumber: formData.guideNumber.trim() || 'N/A',
+        guideNumber: formData.guideNumber.trim(),
         notes: formData.notes.trim() || '',
         observations: formData.observations.trim() || '',
         creatorId: user.uid,

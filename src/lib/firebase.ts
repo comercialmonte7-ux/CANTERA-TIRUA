@@ -138,6 +138,7 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
           acc[key] = value;
           return acc;
         }
+        if (key === 'guideNumber') return acc; // Saltar para usar el procesado arriba
         if (value !== undefined) acc[key] = value;
         return acc;
       }, { 
@@ -334,6 +335,9 @@ export const updateDispatch = async (dispatchId: string, newData: Partial<Dispat
     const oldData = dispatchSnap.data() as Dispatch;
     const oldMaterialId = oldData.materialType.toLowerCase().replace(/ /g, '_');
     const newMaterialId = (newData.materialType || oldData.materialType).toLowerCase().replace(/ /g, '_');
+    
+    // Preparar campos para actualizar el despacho
+    const updateFields: any = { ...newData, updatedAt: serverTimestamp() };
     
     // Necesitamos leer los inventarios antes de escribir nada
     let oldInvSnap = null;
