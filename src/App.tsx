@@ -67,7 +67,7 @@ import {
 } from 'recharts';
 import { format, startOfDay, endOfDay, isWithinInterval, subDays, startOfMonth, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { getInventory, updateInventoryStock, Inventory } from './lib/firebase';
+import { getInventory, updateInventoryStock, updateInventoryName, Inventory } from './lib/firebase';
 
 export default function App() {
   const [user, setUser] = React.useState<User | null>(null);
@@ -340,7 +340,7 @@ export default function App() {
 
         {activeTab === 'despacho' && (
           <div className="max-w-3xl mx-auto">
-            <DispatchForm user={user} suggestions={suggestions} />
+            <DispatchForm user={user} suggestions={suggestions} inventory={inventory} />
           </div>
         )}
 
@@ -444,7 +444,15 @@ function DashboardStats({ dispatches }: { dispatches: Dispatch[] }) {
   );
 }
 
-function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates: string[], drivers: string[], destinations: string[] } }) {
+function DispatchForm({ 
+  user, 
+  suggestions, 
+  inventory 
+}: { 
+  user: User, 
+  suggestions: { plates: string[], drivers: string[], destinations: string[] },
+  inventory: Inventory[]
+}) {
   const [loading, setLoading] = React.useState(false);
   const [isCustomMaterial, setIsCustomMaterial] = React.useState(false);
   
@@ -459,7 +467,7 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
     truckPlate: '',
     truckDriver: '',
     materialVolume: '14',
-    materialType: 'Base Estabilizada',
+    materialType: inventory.length > 0 ? inventory[0].materialType : 'Base Estabilizada',
     customMaterialType: '',
     destination: '',
     guideNumber: '',
@@ -467,6 +475,13 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
     observations: '',
     photoBase64: ''
   });
+
+  // Efecto para actualizar material predeterminado si el inventario carga después
+  React.useEffect(() => {
+    if (inventory.length > 0 && !formData.truckPlate && !formData.truckDriver) {
+      setFormData(prev => ({ ...prev, materialType: inventory[0].materialType }));
+    }
+  }, [inventory]);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -709,13 +724,21 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
                 onChange={e => setFormData({ ...formData, materialType: e.target.value })}
                 className="flex h-12 sm:h-14 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 sm:px-5 py-2 text-sm sm:text-base font-bold focus:ring-2 focus:ring-amber-500 outline-none appearance-none cursor-pointer"
               >
-                <option>Base Estabilizada</option>
-                <option>Arena Gruesa</option>
-                <option>Arena Fina</option>
-                <option>Grava 3/4</option>
-                <option>Integral Rajo</option>
-                <option>Base Granular</option>
-                <option>Bolón Seleccionado</option>
+                {inventory.length > 0 ? (
+                  inventory.map(item => (
+                    <option key={item.id} value={item.materialType}>{item.materialType}</option>
+                  ))
+                ) : (
+                  <>
+                    <option>Base Estabilizada</option>
+                    <option>Arena Gruesa</option>
+                    <option>Arena Fina</option>
+                    <option>Grava 3/4</option>
+                    <option>Integral Rajo</option>
+                    <option>Base Granular</option>
+                    <option>Bolón Seleccionado</option>
+                  </>
+                )}
               </select>
             )}
           </div>
@@ -1580,7 +1603,9 @@ function InventoryBrief({ inventory }: { inventory: Inventory[] }) {
 
 function InventoryView({ inventory }: { inventory: Inventory[] }) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [editingNameId, setEditingNameId] = React.useState<string | null>(null);
   const [newValue, setNewValue] = React.useState('');
+  const [newName, setNewName] = React.useState('');
 
   const handleUpdate = async (id: string, type: string) => {
     if (!newValue || isNaN(parseFloat(newValue))) return;
@@ -1591,6 +1616,18 @@ function InventoryView({ inventory }: { inventory: Inventory[] }) {
       toast.success('Stock actualizado');
     } catch (e) {
       toast.error('Error al actualizar stock');
+    }
+  };
+
+  const handleUpdateName = async (id: string) => {
+    if (!newName.trim()) return;
+    try {
+      await updateInventoryName(id, newName.trim());
+      setEditingNameId(null);
+      setNewName('');
+      toast.success('Nombre de material actualizado');
+    } catch (e) {
+      toast.error('Error al actualizar nombre');
     }
   };
 
@@ -1613,11 +1650,40 @@ function InventoryView({ inventory }: { inventory: Inventory[] }) {
         {inventory.map(item => (
           <Card key={item.id} className="bg-white rounded-3xl border-zinc-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="pb-2 border-b border-zinc-50 bg-zinc-50/50">
-              <div className="flex justify-between items-start">
-                <CardTitle className="text-sm font-black text-zinc-900 uppercase tracking-tight">{item.materialType}</CardTitle>
-                <div className="bg-white p-1 rounded-lg border border-zinc-100 shadow-sm">
-                  <RefreshCw className="w-3 h-3 text-zinc-400" />
-                </div>
+              <div className="flex justify-between items-start gap-2">
+                {editingNameId === item.id ? (
+                  <div className="flex flex-col gap-2 w-full">
+                    <Input 
+                      value={newName}
+                      onChange={e => setNewName(e.target.value)}
+                      placeholder="Nuevo Nombre"
+                      className="h-8 text-[10px] rounded-lg"
+                      autoFocus
+                    />
+                    <div className="flex gap-1">
+                      <Button size="sm" onClick={() => handleUpdateName(item.id)} className="h-6 text-[8px] px-2 bg-emerald-600 rounded-md">Guardar</Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingNameId(null)} className="h-6 text-[8px] px-2 rounded-md">X</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <CardTitle className="text-sm font-black text-zinc-900 uppercase tracking-tight flex items-center gap-2">
+                      {item.materialType}
+                      <button 
+                        onClick={() => {
+                          setEditingNameId(item.id);
+                          setNewName(item.materialType);
+                        }}
+                        className="p-1 hover:bg-zinc-200 rounded-md transition-colors"
+                      >
+                        <Edit className="w-3 h-3 text-zinc-400" />
+                      </button>
+                    </CardTitle>
+                    <div className="bg-white p-1 rounded-lg border border-zinc-100 shadow-sm">
+                      <RefreshCw className="w-3 h-3 text-zinc-400" />
+                    </div>
+                  </>
+                )}
               </div>
             </CardHeader>
             <CardContent className="pt-6 pb-8">

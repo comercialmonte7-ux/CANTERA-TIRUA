@@ -99,9 +99,9 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
     ]);
 
     // 2. Lógica del Contador
-    let nextNumber = 1001; 
+    let nextNumber = 1; 
     if (counterSnap.exists()) {
-      nextNumber = (counterSnap.data().lastNumber || 1000) + 1;
+      nextNumber = (counterSnap.data().lastNumber || 0) + 1;
     }
 
     // 3. Lógica del Inventario
@@ -130,7 +130,7 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
     // 5. Preparar datos finales y guardar despacho
     const guideNumber = (dispatchData.guideNumber && dispatchData.guideNumber !== 'N/A' && dispatchData.guideNumber !== '') 
       ? dispatchData.guideNumber 
-      : nextNumber.toString();
+      : nextNumber.toString().padStart(3, '0');
 
     const finalData = Object.entries(dispatchData)
       .reduce((acc, [key, value]) => {
@@ -181,6 +181,14 @@ export const updateInventoryStock = async (materialId: string, materialType: str
     materialType,
     currentStock: Math.max(0, newStock),
     unit: 'm3',
+    updatedAt: serverTimestamp()
+  });
+};
+
+export const updateInventoryName = async (materialId: string, newName: string) => {
+  const docRef = doc(db, 'inventory', materialId);
+  return updateDoc(docRef, {
+    materialType: newName,
     updatedAt: serverTimestamp()
   });
 };
