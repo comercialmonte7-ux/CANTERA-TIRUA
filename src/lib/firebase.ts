@@ -92,25 +92,19 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
   const inventoryRef = doc(db, 'inventory', inventoryId);
 
   return runTransaction(db, async (transaction) => {
-    // 1. Obtener y actualizar el contador secuencial
-    const counterSnap = await transaction.get(counterRef);
-    let nextNumber = 1001; // Valor inicial por defecto
-    
+    // 1. Obtener todos los documentos necesarios PRIMERO (Llecturas)
+    const [counterSnap, inventoryDoc] = await Promise.all([
+      transaction.get(counterRef),
+      transaction.get(inventoryRef)
+    ]);
+
+    // 2. Lógica del Contador
+    let nextNumber = 1001; 
     if (counterSnap.exists()) {
       nextNumber = (counterSnap.data().lastNumber || 1000) + 1;
-      transaction.update(counterRef, { lastNumber: nextNumber });
-    } else {
-      transaction.set(counterRef, { lastNumber: nextNumber });
     }
 
-    // Usar el número generado si no viene uno válido
-    const guideNumber = (dispatchData.guideNumber && dispatchData.guideNumber !== 'N/A' && dispatchData.guideNumber !== '') 
-      ? dispatchData.guideNumber 
-      : nextNumber.toString();
-
-    // 2. Gestionar Inventario
-    const inventoryDoc = await transaction.get(inventoryRef);
-    
+    // 3. Lógica del Inventario
     if (inventoryDoc.exists()) {
       const currentStock = inventoryDoc.data().currentStock;
       transaction.update(inventoryRef, {
@@ -126,14 +120,25 @@ export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'create
       });
     }
 
-    // 3. Preparar datos finales
+    // 4. Actualizar Contador (Escritura)
+    if (counterSnap.exists()) {
+      transaction.update(counterRef, { lastNumber: nextNumber });
+    } else {
+      transaction.set(counterRef, { lastNumber: nextNumber });
+    }
+
+    // 5. Preparar datos finales y guardar despacho
+    const guideNumber = (dispatchData.guideNumber && dispatchData.guideNumber !== 'N/A' && dispatchData.guideNumber !== '') 
+      ? dispatchData.guideNumber 
+      : nextNumber.toString();
+
     const finalData = Object.entries(dispatchData)
       .reduce((acc, [key, value]) => {
         if (value !== undefined) acc[key] = value;
         return acc;
       }, { 
         createdAt: serverTimestamp(),
-        guideNumber // Sobrescribir con el generado o el manual validado
+        guideNumber 
       } as any);
 
     transaction.set(dispatchRef, finalData);
@@ -318,6 +323,7 @@ export const updateDispatch = async (dispatchId: string, newData: Partial<Dispat
   const dispatchRef = doc(db, 'dispatches', dispatchId);
   
   return runTransaction(db, async (transaction) => {
+    // 1. Lecturas iniciales
     const dispatchSnap = await transaction.get(dispatchRef);
     if (!dispatchSnap.exists()) throw new Error('Despacho no encontrado');
     
@@ -325,39 +331,47 @@ export const updateDispatch = async (dispatchId: string, newData: Partial<Dispat
     const oldMaterialId = oldData.materialType.toLowerCase().replace(/ /g, '_');
     const newMaterialId = (newData.materialType || oldData.materialType).toLowerCase().replace(/ /g, '_');
     
-    // Si cambió el volumen o el material, ajustamos stock
+    // Necesitamos leer los inventarios antes de escribir nada
+    let oldInvSnap = null;
+    let newInvSnap = null;
+    
+    if (newData.materialVolume !== undefined || newData.materialType !== undefined) {
+      if (oldMaterialId === newMaterialId) {
+        oldInvSnap = await transaction.get(doc(db, 'inventory', oldMaterialId));
+      } else {
+        const [oldSnap, newSnap] = await Promise.all([
+          transaction.get(doc(db, 'inventory', oldMaterialId)),
+          transaction.get(doc(db, 'inventory', newMaterialId))
+        ]);
+        oldInvSnap = oldSnap;
+        newInvSnap = newSnap;
+      }
+    }
+
+    // 2. Escrituras
     if (newData.materialVolume !== undefined || newData.materialType !== undefined) {
       const oldVol = oldData.materialVolume;
       const newVol = newData.materialVolume !== undefined ? newData.materialVolume : oldVol;
       
       if (oldMaterialId === newMaterialId) {
-        // Mismo material, solo cambia volumen
-        const invRef = doc(db, 'inventory', oldMaterialId);
-        const invSnap = await transaction.get(invRef);
-        if (invSnap.exists()) {
-          const currentStock = invSnap.data().currentStock;
+        if (oldInvSnap && oldInvSnap.exists()) {
+          const currentStock = oldInvSnap.data().currentStock;
           const diff = oldVol - newVol; 
-          transaction.update(invRef, {
+          transaction.update(oldInvSnap.ref, {
             currentStock: currentStock + diff,
             updatedAt: serverTimestamp()
           });
         }
       } else {
-        // Cambió el material, revertimos viejo y aplicamos nuevo
-        const oldInvRef = doc(db, 'inventory', oldMaterialId);
-        const newInvRef = doc(db, 'inventory', newMaterialId);
-        
-        const oldInvSnap = await transaction.get(oldInvRef);
-        if (oldInvSnap.exists()) {
-          transaction.update(oldInvRef, {
+        if (oldInvSnap && oldInvSnap.exists()) {
+          transaction.update(oldInvSnap.ref, {
             currentStock: oldInvSnap.data().currentStock + oldVol,
             updatedAt: serverTimestamp()
           });
         }
         
-        const newInvSnap = await transaction.get(newInvRef);
-        if (newInvSnap.exists()) {
-          transaction.update(newInvRef, {
+        if (newInvSnap && newInvSnap.exists()) {
+          transaction.update(newInvSnap.ref, {
             currentStock: newInvSnap.data().currentStock - newVol,
             updatedAt: serverTimestamp()
           });
