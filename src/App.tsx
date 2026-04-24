@@ -452,6 +452,8 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
   const suggestedDestinations = suggestions.destinations;
 
   const [formData, setFormData] = React.useState({
+    date: format(new Date(), 'yyyy-MM-dd'),
+    time: format(new Date(), 'HH:mm'),
     truckPlate: '',
     truckDriver: '',
     materialVolume: '14',
@@ -525,8 +527,13 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
 
     setLoading(true);
     try {
+      // Combinar fecha y hora seleccionada
+      const [year, month, day] = formData.date.split('-').map(Number);
+      const [hours, minutes] = formData.time.split(':').map(Number);
+      const selectedDate = new Date(year, month - 1, day, hours, minutes);
+
       const dispatchData: any = {
-        date: new Date(),
+        date: selectedDate,
         truckPlate: formData.truckPlate.trim().toUpperCase(),
         truckDriver: formData.truckDriver.trim(),
         materialVolume: volume,
@@ -547,6 +554,8 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
       toast.success(`Guía N° ${result.guideNumber} registrada correctamente`);
       
       setFormData({ 
+        date: format(new Date(), 'yyyy-MM-dd'),
+        time: format(new Date(), 'HH:mm'),
         truckPlate: '', 
         truckDriver: '', 
         materialVolume: '14', 
@@ -585,6 +594,29 @@ function DispatchForm({ user, suggestions }: { user: User, suggestions: { plates
 
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4 sm:gap-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+          <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-[9px] sm:text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1 text-amber-600">Fecha de Despacho</Label>
+              <div className="relative">
+                <Input 
+                  type="date"
+                  value={formData.date}
+                  onChange={e => setFormData({ ...formData, date: e.target.value })}
+                  className="bg-amber-50 border-amber-200 rounded-xl h-12 sm:h-14 text-sm font-bold focus:ring-amber-500 focus:border-amber-500 [color-scheme:light]"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[9px] sm:text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1 text-amber-600">Hora de Despacho</Label>
+              <Input 
+                type="time"
+                value={formData.time}
+                onChange={e => setFormData({ ...formData, time: e.target.value })}
+                className="bg-amber-50 border-amber-200 rounded-xl h-12 sm:h-14 text-sm font-bold focus:ring-amber-500 focus:border-amber-500 [color-scheme:light]"
+              />
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <Label className="text-[9px] sm:text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Patente Camión</Label>
             <Input 
