@@ -81,6 +81,19 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "role"]
+    },
+    "Truck": {
+      "title": "Truck",
+      "description": "Unidad de transporte de la flota.",
+      "type": "object",
+      "properties": {
+        "plate": { "type": "string", "description": "Patente del camión" },
+        "capacity": { "type": "number", "description": "Capacidad oficial en m3" },
+        "driverName": { "type": "string", "description": "Chofer habitual" },
+        "isActive": { "type": "boolean", "default": true },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["plate", "capacity"]
     }
   },
   "firestore": {
@@ -95,6 +108,10 @@
     "/inventory/{materialId}": {
       "schema": "Inventory",
       "description": "Control de stock de materiales"
+    },
+    "/trucks/{truckId}": {
+      "schema": "Truck",
+      "description": "Registro de flota de camiones"
     }
   }
 }

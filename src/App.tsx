@@ -11,8 +11,13 @@ import {
   deleteDispatch,
   repairGuides,
   unifyInventoryAndDispatches,
+  getTrucks,
+  saveTruck,
+  deleteTruck,
+  checkTruckAnomalies,
   Dispatch,
   UserProfile,
+  Truck,
   syncUserProfile,
   getAllUserProfiles,
   updateUserRole
@@ -20,7 +25,7 @@ import {
 import { query, collection, where, getDocs } from 'firebase/firestore';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { 
-  Truck, 
+  Truck as TruckIcon, 
   PlusCircle, 
   BarChart3, 
   History, 
@@ -43,7 +48,8 @@ import {
   X,
   RefreshCw,
   TrendingUp,
-  Copy
+  Copy,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from './components/ui/card';
@@ -308,7 +314,7 @@ export default function App() {
             <NavButton active={activeTab === 'inicio'} onClick={() => setActiveTab('inicio')} icon={<LayoutDashboard className="w-4 h-4" />} label="Inicio" />
           )}
           {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'OPERATOR' || user?.email === 'mari.ricardo@gmail.com') && (
-            <NavButton active={activeTab === 'despacho'} onClick={() => setActiveTab('despacho')} icon={<Truck className="w-4 h-4" />} label="Despachar" />
+            <NavButton active={activeTab === 'despacho'} onClick={() => setActiveTab('despacho')} icon={<TruckIcon className="w-4 h-4" />} label="Despachar" />
           )}
           {(profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'VIEWER' || user?.email === 'mari.ricardo@gmail.com') && (
             <NavButton active={activeTab === 'historial'} onClick={() => setActiveTab('historial')} icon={<History className="w-4 h-4" />} label="Historial" />
@@ -471,7 +477,13 @@ function DispatchForm({
 }) {
   const [loading, setLoading] = React.useState(false);
   const [isCustomMaterial, setIsCustomMaterial] = React.useState(false);
+  const [trucks, setTrucks] = React.useState<Truck[]>([]);
   
+  React.useEffect(() => {
+    const unsub = getTrucks(setTrucks);
+    return () => unsub();
+  }, []);
+
   // Extraer valores únicos para sugerencias
   const suggestedPlates = suggestions.plates;
   const suggestedDrivers = suggestions.drivers;
@@ -491,6 +503,18 @@ function DispatchForm({
     observations: '',
     photoBase64: ''
   });
+
+  const handlePlateChange = (plate: string) => {
+    const normalizedPlate = plate.toUpperCase();
+    const truck = trucks.find(t => t.plate === normalizedPlate);
+    
+    setFormData(prev => ({ 
+      ...prev, 
+      truckPlate: plate,
+      materialVolume: truck ? truck.capacity.toString() : prev.materialVolume,
+      truckDriver: (truck && truck.driverName) ? truck.driverName : prev.truckDriver
+    }));
+  };
 
   // Efecto para actualizar material predeterminado si el inventario carga después
   React.useEffect(() => {
@@ -658,7 +682,7 @@ function DispatchForm({
             <Input 
               placeholder="ABCD-12" 
               value={formData.truckPlate}
-              onChange={e => setFormData({ ...formData, truckPlate: e.target.value })}
+              onChange={e => handlePlateChange(e.target.value)}
               list="plates-list"
               className="bg-zinc-50 border-zinc-200 rounded-xl h-12 sm:h-14 text-lg sm:text-xl font-mono focus:ring-amber-500 focus:border-amber-500 font-bold uppercase"
             />
@@ -1825,6 +1849,48 @@ function InventoryView({ inventory }: { inventory: Inventory[] }) {
   const [editingNameId, setEditingNameId] = React.useState<string | null>(null);
   const [newValue, setNewValue] = React.useState('');
   const [newName, setNewName] = React.useState('');
+  const [trucks, setTrucks] = React.useState<Truck[]>([]);
+  const [anomalies, setAnomalies] = React.useState<any[]>([]);
+  const [isAddingTruck, setIsAddingTruck] = React.useState(false);
+  const [truckFormData, setTruckFormData] = React.useState({ plate: '', capacity: '', driverName: '' });
+
+  React.useEffect(() => {
+    const unsub = getTrucks(setTrucks);
+    return () => unsub();
+  }, []);
+
+  const handleCheckAnomalies = async () => {
+    const toastId = toast.loading('Analizando historial de viajes...');
+    try {
+      const data = await checkTruckAnomalies();
+      setAnomalies(data);
+      if (data.length === 0) {
+        toast.success('No se detectaron incongruencias', { id: toastId });
+      } else {
+        toast.success(`Se encontraron ${data.length} alertas en la flota`, { id: toastId });
+      }
+    } catch (e) {
+      toast.error('Error al analizar historial', { id: toastId });
+    }
+  };
+
+  const handleAddTruck = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!truckFormData.plate || !truckFormData.capacity) return;
+    try {
+      await saveTruck({
+        plate: truckFormData.plate,
+        capacity: parseFloat(truckFormData.capacity),
+        driverName: truckFormData.driverName,
+        isActive: true
+      });
+      setIsAddingTruck(false);
+      setTruckFormData({ plate: '', capacity: '', driverName: '' });
+      toast.success('Camión registrado');
+    } catch (e) {
+      toast.error('Error al registrar camión');
+    }
+  };
 
   const handleUpdate = async (id: string, type: string) => {
     if (!newValue || isNaN(parseFloat(newValue))) return;
@@ -1851,7 +1917,7 @@ function InventoryView({ inventory }: { inventory: Inventory[] }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-20">
       <div className="bg-amber-600 p-8 rounded-3xl text-white relative overflow-hidden shadow-xl shadow-amber-900/10">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
         <div className="flex items-center gap-4 relative z-10">
@@ -1859,89 +1925,265 @@ function InventoryView({ inventory }: { inventory: Inventory[] }) {
             <Package className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-2xl font-black tracking-tight">Gestión de Inventario</h2>
-            <p className="text-amber-100 text-xs font-bold uppercase tracking-widest opacity-80">Control de stock real en cantera</p>
+            <h2 className="text-2xl font-black tracking-tight">Inventario y Flota</h2>
+            <p className="text-amber-100 text-xs font-bold uppercase tracking-widest opacity-80">Control de stock y gestión de camiones</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {inventory.map(item => (
-          <Card key={item.id} className="bg-white rounded-3xl border-zinc-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-            <CardHeader className="pb-2 border-b border-zinc-50 bg-zinc-50/50">
-              <div className="flex justify-between items-start gap-2">
-                {editingNameId === item.id ? (
-                  <div className="flex flex-col gap-2 w-full">
-                    <Input 
-                      value={newName}
-                      onChange={e => setNewName(e.target.value)}
-                      placeholder="Nuevo Nombre"
-                      className="h-8 text-[10px] rounded-lg"
-                      autoFocus
-                    />
-                    <div className="flex gap-1">
-                      <Button size="sm" onClick={() => handleUpdateName(item.id)} className="h-6 text-[8px] px-2 bg-emerald-600 rounded-md">Guardar</Button>
-                      <Button size="sm" variant="outline" onClick={() => setEditingNameId(null)} className="h-6 text-[8px] px-2 rounded-md">X</Button>
+      <div className="space-y-4">
+        <h3 className="text-sm font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">Materiales en Cantera</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {inventory.map(item => (
+            <Card key={item.id} className="bg-white rounded-3xl border-zinc-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="pb-2 border-b border-zinc-50 bg-zinc-50/50">
+                <div className="flex justify-between items-start gap-2">
+                  {editingNameId === item.id ? (
+                    <div className="flex flex-col gap-2 w-full">
+                      <Input 
+                        value={newName}
+                        onChange={e => setNewName(e.target.value)}
+                        placeholder="Nuevo Nombre"
+                        className="h-8 text-[10px] rounded-lg"
+                        autoFocus
+                      />
+                      <div className="flex gap-1">
+                        <Button size="sm" onClick={() => handleUpdateName(item.id)} className="h-6 text-[8px] px-2 bg-emerald-600 rounded-md">Guardar</Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingNameId(null)} className="h-6 text-[8px] px-2 rounded-md">X</Button>
+                      </div>
                     </div>
+                  ) : (
+                    <>
+                      <CardTitle className="text-sm font-black text-zinc-900 uppercase tracking-tight flex items-center gap-2">
+                        {item.materialType}
+                        <button 
+                          onClick={() => {
+                            setEditingNameId(item.id);
+                            setNewName(item.materialType);
+                          }}
+                          className="p-1 hover:bg-zinc-200 rounded-md transition-colors"
+                        >
+                          <Edit className="w-3 h-3 text-zinc-400" />
+                        </button>
+                      </CardTitle>
+                      <div className="bg-white p-1 rounded-lg border border-zinc-100 shadow-sm">
+                        <RefreshCw className="w-3 h-3 text-zinc-400" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-6 pb-8">
+                <div className="flex flex-col items-center text-center">
+                  <div className={`text-5xl font-black mb-2 tracking-tighter ${item.currentStock < 150 ? 'text-rose-500' : 'text-zinc-900'}`}>
+                    {item.currentStock.toFixed(1)}
+                    <span className="text-xl text-zinc-300 ml-2 font-black uppercase">m³</span>
+                  </div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Stock Disponible</p>
+                </div>
+              </CardContent>
+              <CardFooter className="bg-zinc-50 border-t border-zinc-100 p-4">
+                {editingId === item.id ? (
+                  <div className="flex gap-2 w-full">
+                    <Input 
+                      type="number"
+                      value={newValue}
+                      onChange={e => setNewValue(e.target.value)}
+                      placeholder="Nuevo Valor"
+                      className="h-10 text-xs rounded-xl"
+                    />
+                    <Button onClick={() => handleUpdate(item.id, item.materialType)} className="h-10 px-4 bg-emerald-600 rounded-xl hover:bg-emerald-700">OK</Button>
+                    <Button onClick={() => setEditingId(null)} variant="outline" className="h-10 px-4 rounded-xl">X</Button>
                   </div>
                 ) : (
-                  <>
-                    <CardTitle className="text-sm font-black text-zinc-900 uppercase tracking-tight flex items-center gap-2">
-                      {item.materialType}
-                      <button 
-                        onClick={() => {
-                          setEditingNameId(item.id);
-                          setNewName(item.materialType);
-                        }}
-                        className="p-1 hover:bg-zinc-200 rounded-md transition-colors"
-                      >
-                        <Edit className="w-3 h-3 text-zinc-400" />
-                      </button>
-                    </CardTitle>
-                    <div className="bg-white p-1 rounded-lg border border-zinc-100 shadow-sm">
-                      <RefreshCw className="w-3 h-3 text-zinc-400" />
-                    </div>
-                  </>
+                  <Button 
+                    onClick={() => {
+                      setEditingId(item.id);
+                      setNewValue(item.currentStock.toString());
+                    }}
+                    variant="outline" 
+                    className="w-full h-10 rounded-xl text-[10px] font-black uppercase tracking-widest border-zinc-200 hover:bg-white transition-all"
+                  >
+                    Reiniciar Stock / Ajustar
+                  </Button>
                 )}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-6 pb-8">
-              <div className="flex flex-col items-center text-center">
-                <div className={`text-5xl font-black mb-2 tracking-tighter ${item.currentStock < 150 ? 'text-rose-500' : 'text-zinc-900'}`}>
-                  {item.currentStock.toFixed(1)}
-                  <span className="text-xl text-zinc-300 ml-2 font-black uppercase">m³</span>
-                </div>
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Stock Disponible</p>
-              </div>
-            </CardContent>
-            <CardFooter className="bg-zinc-50 border-t border-zinc-100 p-4">
-              {editingId === item.id ? (
-                <div className="flex gap-2 w-full">
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Fleet Section */}
+      <div className="space-y-6 pt-4 border-t border-zinc-100">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-2">
+          <div>
+            <h3 className="text-sm font-black text-zinc-900 uppercase tracking-[0.15em] flex items-center gap-2">
+              <TruckIcon className="w-5 h-5 text-amber-600" />
+              Registro de Flota
+            </h3>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Gestión de camiones y capacidades oficiales</p>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button 
+              onClick={handleCheckAnomalies}
+              variant="outline"
+              className="flex-1 sm:flex-initial h-10 rounded-xl border-amber-200 text-amber-700 text-[10px] font-black uppercase tracking-widest bg-amber-50"
+            >
+              <AlertTriangle className="w-3 h-3 mr-2" />
+              Verificar Incongruencias
+            </Button>
+            <Button 
+              onClick={() => setIsAddingTruck(!isAddingTruck)}
+              className="flex-1 sm:flex-initial h-10 rounded-xl bg-zinc-900 text-white text-[10px] font-black uppercase tracking-widest"
+            >
+              {isAddingTruck ? 'Cancelar' : 'Registrar Camión'}
+            </Button>
+          </div>
+        </div>
+
+        {isAddingTruck && (
+          <Card className="bg-zinc-50 border-zinc-200 rounded-3xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+            <CardContent className="p-6">
+              <form onSubmit={handleAddTruck} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div className="space-y-1.5">
+                  <Label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">Patente</Label>
                   <Input 
-                    type="number"
-                    value={newValue}
-                    onChange={e => setNewValue(e.target.value)}
-                    placeholder="Nuevo Valor"
-                    className="h-10 text-xs rounded-xl"
+                    required
+                    placeholder="ABCD-12"
+                    value={truckFormData.plate}
+                    onChange={e => setTruckFormData({ ...truckFormData, plate: e.target.value.toUpperCase() })}
+                    className="bg-white border-zinc-200 rounded-xl h-12 font-mono font-bold"
                   />
-                  <Button onClick={() => handleUpdate(item.id, item.materialType)} className="h-10 px-4 bg-emerald-600 rounded-xl hover:bg-emerald-700">OK</Button>
-                  <Button onClick={() => setEditingId(null)} variant="outline" className="h-10 px-4 rounded-xl">X</Button>
                 </div>
-              ) : (
-                <Button 
-                  onClick={() => {
-                    setEditingId(item.id);
-                    setNewValue(item.currentStock.toString());
-                  }}
-                  variant="outline" 
-                  className="w-full h-10 rounded-xl text-[10px] font-black uppercase tracking-widest border-zinc-200 hover:bg-white transition-all"
-                >
-                  Reiniciar Stock / Ajustar
+                <div className="space-y-1.5">
+                  <Label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">Capacidad (m³)</Label>
+                  <Input 
+                    required
+                    type="number"
+                    step="0.1"
+                    placeholder="20"
+                    value={truckFormData.capacity}
+                    onChange={e => setTruckFormData({ ...truckFormData, capacity: e.target.value })}
+                    className="bg-white border-zinc-200 rounded-xl h-12 font-bold"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest ml-1">Chofer Habitual</Label>
+                  <Input 
+                    placeholder="Nombre Opcional"
+                    value={truckFormData.driverName}
+                    onChange={e => setTruckFormData({ ...truckFormData, driverName: e.target.value })}
+                    className="bg-white border-zinc-200 rounded-xl h-12 font-bold"
+                  />
+                </div>
+                <Button type="submit" className="bg-amber-600 text-white h-12 rounded-xl font-black uppercase tracking-widest text-[10px]">
+                  Guardar en Flota
                 </Button>
-              )}
-            </CardFooter>
+              </form>
+            </CardContent>
           </Card>
-        ))}
+        )}
+
+        {anomalies.length > 0 && (
+          <div className="bg-rose-50 border border-rose-100 rounded-3xl p-6 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-rose-500 p-2 rounded-xl text-white">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-rose-900 uppercase tracking-tight">Alertas de Incongruencia detectadas</h4>
+                  <p className="text-[10px] font-bold text-rose-600 uppercase tracking-widest">Viajes registrados con m³ diferentes a la capacidad oficial</p>
+                </div>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setAnomalies([])}
+                className="text-rose-400 hover:text-rose-600 hover:bg-rose-100/50"
+              >
+                Cerrar Alertas
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {anomalies.map(anomaly => (
+                <div key={anomaly.plate} className="bg-white border border-rose-200 rounded-2xl p-4 shadow-sm">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-xs font-black text-zinc-900 font-mono tracking-widest truncate">{anomaly.plate}</span>
+                    <span className="bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-1 rounded-lg border border-rose-200">
+                      Oficial: {anomaly.officialCapacity}m³
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {anomaly.history.filter((h: any) => h.volume !== anomaly.officialCapacity).map((h: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center text-[10px]">
+                        <span className="text-zinc-500 font-bold uppercase tracking-widest">Hallado: {h.volume}m³</span>
+                        <span className="text-rose-500 font-black tracking-tighter">{h.count} viajes</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-zinc-50/80 border-b border-zinc-100">
+                  <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Patente</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Capacidad</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Chofer</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-50">
+                {trucks.length > 0 ? (
+                  trucks.map(truck => (
+                    <tr key={truck.id} className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <span className="text-sm font-black text-zinc-900 font-mono tracking-widest">{truck.plate}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-black text-zinc-900">{truck.capacity}</span>
+                          <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest">m³</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-[11px] font-bold text-zinc-600">{truck.driverName || '---'}</span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={async () => {
+                            if (window.confirm('¿Eliminar camión de la flota?')) {
+                              await deleteTruck(truck.id!);
+                              toast.success('Camión eliminado');
+                            }
+                          }}
+                          className="h-8 w-8 p-0 text-zinc-300 hover:text-rose-500 rounded-lg hover:bg-rose-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-12 text-center">
+                      <TruckIcon className="w-10 h-10 text-zinc-200 mx-auto mb-3" />
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">No hay camiones registrados en la flota</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -85,6 +85,15 @@ export interface UserProfile {
   createdAt?: any;
 }
 
+export interface Truck {
+  id?: string;
+  plate: string;
+  capacity: number;
+  driverName?: string;
+  isActive: boolean;
+  updatedAt?: any;
+}
+
 export const createDispatch = async (dispatchData: Omit<Dispatch, 'id' | 'createdAt' | 'guideNumber'> & { guideNumber?: string }) => {
   const dispatchRef = doc(collection(db, 'dispatches'));
   const counterRef = doc(db, 'counters', 'guides');
@@ -590,4 +599,74 @@ export const repairGuides = async () => {
   }, { merge: true });
   
   return count;
+};
+
+// --- Fleet Management ---
+
+export const getTrucks = (callback: (trucks: Truck[]) => void) => {
+  const q = query(collection(db, 'trucks'), orderBy('plate', 'asc'));
+  return onSnapshot(q, (snapshot) => {
+    const trucks = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Truck));
+    callback(trucks);
+  });
+};
+
+export const saveTruck = async (truck: Omit<Truck, 'id' | 'updatedAt'> & { id?: string }) => {
+  const truckId = truck.id || truck.plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const docRef = doc(db, 'trucks', truckId);
+  return setDoc(docRef, {
+    ...truck,
+    plate: truck.plate.toUpperCase(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+};
+
+export const deleteTruck = async (truckId: string) => {
+  return deleteDoc(doc(db, 'trucks', truckId));
+};
+
+export const checkTruckAnomalies = async () => {
+  const trucksSnap = await getDocs(collection(db, 'trucks'));
+  const dispatchesSnap = await getDocs(collection(db, 'dispatches'));
+  
+  const truckMap = new Map<string, number>();
+  trucksSnap.forEach(doc => {
+    const data = doc.data();
+    truckMap.set(data.plate.toUpperCase(), data.capacity);
+  });
+  
+  const anomalies: Array<{ plate: string, officialCapacity: number, history: Array<{ volume: number, count: number }> }> = [];
+  
+  const historyByPlate = new Map<string, Map<number, number>>();
+  
+  dispatchesSnap.forEach(doc => {
+    const data = doc.data();
+    const plate = (data.truckPlate || '').toUpperCase();
+    const vol = data.materialVolume;
+    
+    if (!historyByPlate.has(plate)) historyByPlate.set(plate, new Map());
+    const volMap = historyByPlate.get(plate)!;
+    volMap.set(vol, (volMap.get(vol) || 0) + 1);
+  });
+  
+  historyByPlate.forEach((volMap, plate) => {
+    const official = truckMap.get(plate);
+    if (!official) return; // Camión no registrado en flota
+    
+    const history = Array.from(volMap.entries()).map(([volume, count]) => ({ volume, count }));
+    const hasDifferentVol = history.some(h => h.volume !== official);
+    
+    if (hasDifferentVol) {
+      anomalies.push({
+        plate,
+        officialCapacity: official,
+        history
+      });
+    }
+  });
+  
+  return anomalies;
 };
