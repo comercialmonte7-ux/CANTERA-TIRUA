@@ -1067,6 +1067,79 @@ function HistoryView({
     }
   };
   
+  const handleImport22April = async () => {
+    if (!window.confirm('¿Desea importar los 15 viajes de Roca Grande del 22-04-2026?')) return;
+    setIsImporting(true);
+    const toastId = toast.loading('Importando datos del 22/04...');
+    const DATA_22_04 = [
+      { truckPlate: 'PP.VX-71', materialVolume: 20, trips: 5 },
+      { truckPlate: 'PL.GH-44', materialVolume: 20, trips: 3 },
+      { truckPlate: 'PP.VX-69', materialVolume: 20, trips: 4 },
+      { truckPlate: 'MY.88-44', materialVolume: 20, trips: 3 },
+    ];
+    try {
+      let count = 0;
+      for (const item of DATA_22_04) {
+        for (let i = 0; i < item.trips; i++) {
+          await createDispatch({
+            creatorId: 'photo-import',
+            creatorName: 'Importación Manual Foto',
+            materialType: 'Roca grande',
+            destination: 'Planta',
+            date: new Date('2026-04-22T12:00:00'),
+            truckDriver: 'S/N',
+            truckPlate: item.truckPlate,
+            materialVolume: item.materialVolume,
+            notes: 'Importado de bitácora física 22-04-2026'
+          });
+          count++;
+        }
+      }
+      toast.success(`Importación exitosa: ${count} viajes de Roca Grande`, { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al importar datos', { id: toastId });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImport23April = async () => {
+    if (!window.confirm('¿Desea importar los 3 viajes de Material de Cantera del 23-04-2026?')) return;
+    setIsImporting(true);
+    const toastId = toast.loading('Importando datos del 23/04...');
+    const DATA_23_04 = [
+      { truckPlate: 'PL.GH-44', materialVolume: 15, trips: 1 },
+      { truckPlate: 'PP.VX-69', materialVolume: 20, trips: 1 },
+      { truckPlate: 'PP.VX-71', materialVolume: 20, trips: 1 },
+    ];
+    try {
+      let count = 0;
+      for (const item of DATA_23_04) {
+        for (let i = 0; i < item.trips; i++) {
+          await createDispatch({
+            creatorId: 'photo-import',
+            creatorName: 'Importación Manual Foto',
+            materialType: 'Material de Cantera',
+            destination: 'Planta',
+            date: new Date('2026-04-23T12:00:00'),
+            truckDriver: 'S/N',
+            truckPlate: item.truckPlate,
+            materialVolume: item.materialVolume,
+            notes: 'Importado de bitácora física 23-04-2026'
+          });
+          count++;
+        }
+      }
+      toast.success(`Importación exitosa: ${count} viajes del 23/04`, { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al importar datos', { id: toastId });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const filteredDispatches = dispatches.filter(d => {
     const matchesSearch = d.truckPlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
       d.truckDriver.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1183,12 +1256,30 @@ function HistoryView({
                 </Button>
                 <Button 
                   variant="outline" 
-                  size="sm" 
+                   size="sm" 
                   className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-emerald-200 text-emerald-600 hover:bg-emerald-50 rounded-xl"
                   onClick={handleImportPhotoData}
                   disabled={isImporting}
                 >
-                  {isImporting ? 'Importando...' : 'Importar Bitácora 21/04'}
+                  {isImporting ? '...' : 'Bitácora 21/04'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-emerald-200 text-emerald-600 hover:bg-emerald-50 rounded-xl"
+                  onClick={handleImport22April}
+                  disabled={isImporting}
+                >
+                  {isImporting ? '...' : 'Bitácora 22/04'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-emerald-200 text-emerald-600 hover:bg-emerald-50 rounded-xl"
+                  onClick={handleImport23April}
+                  disabled={isImporting}
+                >
+                  {isImporting ? '...' : 'Bitácora 23/04'}
                 </Button>
                 <Button 
                   variant="outline" 
