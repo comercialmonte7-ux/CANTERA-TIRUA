@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { 
   auth, 
+  db,
   signInWithGoogle, 
   logout, 
   createDispatch, 
@@ -16,6 +17,7 @@ import {
   getAllUserProfiles,
   updateUserRole
 } from './lib/firebase';
+import { query, collection, where, getDocs } from 'firebase/firestore';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { 
   Truck, 
