@@ -988,20 +988,29 @@ function HistoryView({
   onEdit?: (dispatch: Dispatch) => void
 }) {
   const [searchTerm, setSearchTerm] = React.useState('');
+  const [startDate, setStartDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   
-  const filteredDispatches = dispatches.filter(d => 
-    d.truckPlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.truckDriver.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.materialType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (d.guideNumber && d.guideNumber.toLowerCase().includes(searchTerm.toLowerCase()))
-  ).sort((a, b) => {
-    // Primero por fecha de despacho descendente
+  const filteredDispatches = dispatches.filter(d => {
+    const matchesSearch = d.truckPlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      d.truckDriver.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      d.materialType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      d.destination.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.guideNumber && d.guideNumber.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const start = startOfDay(new Date(startDate + 'T00:00:00'));
+    const end = endOfDay(new Date(endDate + 'T23:59:59'));
+    const matchesDate = d.date >= start && d.date <= end;
+
+    return matchesSearch && matchesDate;
+  }).sort((a, b) => {
     const dateCompare = b.date.getTime() - a.date.getTime();
     if (dateCompare !== 0) return dateCompare;
-    // Si la fecha es igual, por número de guía descendente para mantener orden lógico en duplicados
     return (b.guideNumber || '').localeCompare(a.guideNumber || '', undefined, { numeric: true });
   });
+
+  const totalViajes = filteredDispatches.length;
+  const totalVolumen = filteredDispatches.reduce((acc, curr) => acc + curr.materialVolume, 0);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('¿Estás seguro de eliminar este despacho? El stock será devuelto al inventario.')) return;
@@ -1044,140 +1053,192 @@ function HistoryView({
   };
 
   return (
-    <div className="bg-white rounded-2xl sm:rounded-[2rem] border border-zinc-200 shadow-sm flex flex-col h-full min-h-[400px]">
-      <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-zinc-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-50/10 shrink-0">
-        <div>
-          <h3 className="text-[10px] sm:text-xs font-black text-zinc-800 uppercase tracking-[0.2em]">Registro Histórico</h3>
-          <p className="text-[8px] sm:text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Últimos movimientos</p>
-        </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {isAdmin && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600 hover:bg-amber-50"
-              onClick={async () => {
-                if (window.confirm('¿Seguro que desea renumerar TODAS las guías? Se asignarán números correlativos (001, 002...) según el orden cronológico actual y se reseteará el contador global.')) {
-                  const toastId = toast.loading('Renumerando guías...');
-                  try {
-                    const count = await repairGuides();
-                    toast.success(`${count} guías renumeradas correctamente`, { id: toastId });
-                  } catch (error) {
-                    toast.error('Error al renumerar guías', { id: toastId });
+    <div className="flex flex-col gap-6 h-full">
+      {/* Sección de Filtros y Resumen */}
+      <div className="grid grid-cols-12 gap-6 shrink-0">
+        <div className="col-span-12 lg:col-span-8 bg-white rounded-3xl border border-zinc-200 p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-end gap-3">
+            <div className="flex-1 w-full space-y-1">
+              <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Búsqueda rápida</Label>
+              <Input 
+                placeholder="Patente, chofer, material..." 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="h-9 text-xs border-zinc-200 rounded-xl"
+              />
+            </div>
+            <div className="w-full sm:w-auto space-y-1">
+              <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1 text-amber-600">Desde</Label>
+              <Input 
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="h-9 text-xs border-zinc-200 rounded-xl [color-scheme:light]"
+              />
+            </div>
+            <div className="w-full sm:w-auto space-y-1">
+              <Label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1 text-amber-600">Hasta</Label>
+              <Input 
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="h-9 text-xs border-zinc-200 rounded-xl [color-scheme:light]"
+              />
+            </div>
+            {isAdmin && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600 hover:bg-amber-50 rounded-xl"
+                onClick={async () => {
+                  if (window.confirm('¿Seguro que desea renumerar TODAS las guías? Se asignarán números correlativos (001, 002...) según el orden cronológico actual.')) {
+                    const toastId = toast.loading('Renumerando...');
+                    try {
+                      const count = await repairGuides();
+                      toast.success(`${count} guías renumeradas`, { id: toastId });
+                    } catch (error) {
+                      toast.error('Error al renumerar', { id: toastId });
+                    }
                   }
-                }
-              }}
-            >
-              Renumerar Todo (001...)
-            </Button>
-          )}
-          <div className="w-full sm:w-64 relative">
-            <Input 
-              placeholder="Buscar patente, chofer..." 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="h-9 text-xs border-zinc-200 rounded-xl pl-3 w-full"
-            />
+                }}
+              >
+                Renumerar
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="col-span-12 lg:col-span-4 grid grid-cols-2 gap-4">
+          <div className="bg-zinc-900 rounded-3xl p-5 text-white shadow-xl shadow-zinc-200">
+            <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Total Viajes</p>
+            <h4 className="text-2xl font-black mt-1 tracking-tighter">{totalViajes}</h4>
+            <p className="text-[7px] text-zinc-500 font-bold uppercase mt-1">En el periodo</p>
+          </div>
+          <div className="bg-amber-600 rounded-3xl p-5 text-white shadow-xl shadow-amber-900/10">
+            <p className="text-[8px] font-black text-amber-200 uppercase tracking-widest">Metros Totales</p>
+            <h4 className="text-2xl font-black mt-1 tracking-tighter">{totalVolumen.toFixed(1)} <span className="text-xs font-bold text-amber-200">m³</span></h4>
+            <p className="text-[7px] text-amber-100/60 font-bold uppercase mt-1">Acumulado</p>
           </div>
         </div>
       </div>
-      <div className="flex-1 overflow-x-auto pb-4">
-        <Table className="min-w-[600px] sm:min-w-0">
-          <TableHeader className="bg-white sticky top-0 z-10">
-            <TableRow className="border-none hover:bg-transparent">
-              <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Hora / Guía</TableHead>
-              <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Unidad</TableHead>
-              <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Detalles</TableHead>
-              <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10">Operador</TableHead>
-              <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10 text-right">Volumen</TableHead>
-              {isAdmin && <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-4 sm:px-6 h-10 text-right">Acciones</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredDispatches.map((dispatch) => (
-              <TableRow key={dispatch.id} className="hover:bg-zinc-50 border-b border-zinc-50 transition-colors">
-                <TableCell className="px-4 sm:px-6 py-3">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-mono font-bold text-zinc-500">{format(dispatch.date, "HH:mm")}</span>
-                    <span className="text-[9px] font-black text-zinc-700 uppercase tracking-tighter bg-zinc-100 px-1 rounded inline-block w-fit mt-0.5">N° {dispatch.guideNumber}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="px-4 sm:px-6 py-3">
-                  <span className="inline-block px-1.5 py-0.5 bg-zinc-900 text-white rounded-md font-mono text-[10px] font-bold tracking-tight shadow-sm uppercase">
-                    {dispatch.truckPlate}
-                  </span>
-                </TableCell>
-                <TableCell className="px-4 sm:px-6 py-3">
-                  <div className="flex flex-col min-w-[150px]">
-                    <div className="flex items-center gap-2">
-                       <span className="text-xs font-bold text-zinc-800 truncate">{dispatch.truckDriver}</span>
-                       {dispatch.photoUrl && (
-                         <div className="group/photo relative">
-                           <Camera className="w-3 h-3 text-amber-500" />
-                           <div className="hidden group-hover/photo:block absolute left-0 bottom-full mb-2 z-50">
-                             <img src={dispatch.photoUrl} className="w-32 h-32 object-cover rounded-lg border-2 border-amber-500 shadow-xl" referrerPolicy="no-referrer" />
-                           </div>
-                         </div>
-                       )}
-                    </div>
-                    <span className="text-[8px] text-zinc-400 font-black uppercase tracking-widest truncate">{dispatch.materialType}</span>
-                    <span className="text-[8px] text-emerald-600 font-bold uppercase truncate">→ {dispatch.destination}</span>
-                    {dispatch.observations && (
-                      <span className="text-[8px] text-amber-700 italic truncate mt-1 bg-amber-50 px-1 rounded animate-in fade-in slide-in-from-left-1">
-                        Obs: {dispatch.observations}
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="px-4 sm:px-6 py-3">
-                   <div className="flex flex-col">
-                     <span className="text-[10px] font-bold text-zinc-600 truncate">{dispatch.creatorName}</span>
-                     <span className="text-[8px] text-zinc-400 font-black uppercase tracking-widest">Emisor</span>
-                   </div>
-                </TableCell>
-                <TableCell className="px-4 sm:px-6 py-3 text-right">
-                  <span className="text-sm font-black text-amber-600">{dispatch.materialVolume.toFixed(1)} <span className="text-[8px] text-zinc-300">m³</span></span>
-                </TableCell>
-                {isAdmin && (
-                  <TableCell className="px-4 sm:px-6 py-3 text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 text-zinc-400 hover:text-amber-600"
-                        title="Duplicar Despacho"
-                        onClick={() => handleDuplicate(dispatch)}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 text-zinc-400 hover:text-amber-600"
-                        onClick={() => onEdit?.(dispatch)}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 text-zinc-400 hover:text-red-600"
-                        onClick={() => dispatch.id && handleDelete(dispatch.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+
+      <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm flex flex-col flex-1 overflow-hidden">
+        <div className="flex-1 overflow-x-auto">
+          <Table>
+            <TableHeader className="bg-zinc-50/50 sticky top-0 z-10">
+              <TableRow className="border-b border-zinc-100 hover:bg-transparent">
+                <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-6 h-12">Fecha / Hora</TableHead>
+                <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-6 h-12">Guía / Unidad</TableHead>
+                <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-6 h-12">Detalles del Despacho</TableHead>
+                <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-6 h-12">Operador</TableHead>
+                <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-6 h-12 text-right">Volumen</TableHead>
+                {isAdmin && <TableHead className="text-[9px] font-black text-zinc-400 uppercase tracking-widest px-6 h-12 text-right">Acciones</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+            {filteredDispatches.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 6 : 5} className="h-40 text-center">
+                    <div className="flex flex-col items-center opacity-10">
+                      <History className="w-12 h-12 mb-2" />
+                      <p className="text-xs font-black uppercase tracking-widest text-zinc-900">Sin resultados</p>
                     </div>
                   </TableCell>
-                )}
-              </TableRow>
-            ))}
-            {filteredDispatches.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={isAdmin ? 6 : 5} className="h-40 text-center text-xs text-zinc-400 italic">No se encontraron registros para mostrar en el historial.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+                </TableRow>
+              ) : (
+                filteredDispatches.map((dispatch) => (
+                  <TableRow key={dispatch.id} className="hover:bg-zinc-50 border-b border-zinc-100 transition-colors">
+                    <TableCell className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-zinc-800 uppercase">{format(dispatch.date, "dd MMM, yyyy", { locale: es })}</span>
+                        <span className="text-[9px] font-bold text-zinc-400 font-mono">{format(dispatch.date, "HH:mm")} hrs</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[9px] font-black text-zinc-700 uppercase tracking-tighter bg-zinc-100 px-1.5 py-0.5 rounded-md inline-block w-fit">N° {dispatch.guideNumber}</span>
+                        <span className="inline-block px-2 py-0.5 bg-zinc-900 text-white rounded-md font-mono text-[10px] font-bold tracking-tight shadow-sm uppercase w-fit">
+                          {dispatch.truckPlate}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
+                      <div className="flex flex-col min-w-[200px]">
+                        <div className="flex items-center gap-2">
+                           <span className="text-xs font-bold text-zinc-800">{dispatch.truckDriver}</span>
+                           {dispatch.photoUrl && (
+                             <div className="group/photo relative">
+                               <Camera className="w-3.5 h-3.5 text-amber-500 cursor-help" />
+                               <div className="hidden group-hover/photo:block absolute left-0 bottom-full mb-3 z-50">
+                                 <div className="p-1 bg-white rounded-xl shadow-2xl border-2 border-amber-500">
+                                   <img src={dispatch.photoUrl} className="w-48 h-48 object-cover rounded-lg" referrerPolicy="no-referrer" />
+                                 </div>
+                               </div>
+                             </div>
+                           )}
+                        </div>
+                        <span className="text-[8px] text-zinc-400 font-black uppercase tracking-widest mt-0.5">{dispatch.materialType}</span>
+                        <span className="text-[9px] text-emerald-600 font-bold uppercase flex items-center gap-1">
+                          <span className="w-1 h-1 rounded-full bg-emerald-500"></span> {dispatch.destination}
+                        </span>
+                        {dispatch.observations && (
+                          <div className="mt-1.5 p-1.5 bg-amber-50 rounded-lg border border-amber-100/50">
+                            <span className="text-[8px] text-amber-800 font-medium italic block leading-tight">
+                              Obs: {dispatch.observations}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
+                       <div className="flex flex-col">
+                         <span className="text-[10px] font-bold text-zinc-600 truncate">{dispatch.creatorName}</span>
+                         <span className="text-[8px] text-zinc-400 font-black uppercase tracking-widest text-emerald-500">Certificado</span>
+                       </div>
+                    </TableCell>
+                    <TableCell className="px-6 py-4 text-right">
+                      <div className="flex flex-col items-end">
+                        <span className="text-sm font-black text-amber-600 tracking-tighter">{dispatch.materialVolume.toFixed(1)}</span>
+                        <span className="text-[8px] text-zinc-300 font-black uppercase tracking-widest">m³</span>
+                      </div>
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-zinc-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                            title="Duplicar Despacho"
+                            onClick={() => handleDuplicate(dispatch)}
+                          >
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-zinc-300 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                            onClick={() => onEdit?.(dispatch)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-zinc-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                            onClick={() => handleDelete(dispatch.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   );
