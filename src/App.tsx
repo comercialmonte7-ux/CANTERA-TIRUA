@@ -15,6 +15,7 @@ import {
   saveTruck,
   deleteTruck,
   checkTruckAnomalies,
+  bootstrapTrucksFromHistory,
   Dispatch,
   UserProfile,
   Truck,
@@ -2024,6 +2025,24 @@ function InventoryView({ inventory }: { inventory: Inventory[] }) {
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Gestión de camiones y capacidades oficiales</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
+            <Button 
+              onClick={async () => {
+                if (window.confirm('¿Desea analizar el historial de despachos para registrar automáticamente las patentes y capacidades conocidas?')) {
+                  const toastId = toast.loading('Analizando historial...');
+                  try {
+                    const count = await bootstrapTrucksFromHistory();
+                    toast.success(`${count} nuevos camiones registrados`, { id: toastId });
+                  } catch (e) {
+                    toast.error('Error al importar historial', { id: toastId });
+                  }
+                }
+              }}
+              variant="outline"
+              className="flex-1 sm:flex-initial h-10 rounded-xl border-zinc-200 text-zinc-600 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50"
+            >
+              <RefreshCw className="w-3 h-3 mr-2" />
+              Poblar desde Historial
+            </Button>
             <Button 
               onClick={handleCheckAnomalies}
               variant="outline"

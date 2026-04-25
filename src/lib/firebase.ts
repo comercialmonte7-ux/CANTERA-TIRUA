@@ -628,6 +628,51 @@ export const deleteTruck = async (truckId: string) => {
   return deleteDoc(doc(db, 'trucks', truckId));
 };
 
+export const bootstrapTrucksFromHistory = async () => {
+  const dispatchesSnap = await getDocs(collection(db, 'dispatches'));
+  const countsByPlate = new Map<string, Map<number, number>>();
+
+  dispatchesSnap.forEach(doc => {
+    const data = doc.data();
+    const plate = (data.truckPlate || '').toUpperCase().trim();
+    if (!plate) return;
+    const vol = data.materialVolume;
+
+    if (!countsByPlate.has(plate)) countsByPlate.set(plate, new Map());
+    const volMap = countsByPlate.get(plate)!;
+    volMap.set(vol, (volMap.get(vol) || 0) + 1);
+  });
+
+  let added = 0;
+  for (const [plate, volMap] of countsByPlate.entries()) {
+    // Encontrar el volumen más frecuente
+    let bestVol = 0;
+    let maxCount = -1;
+    volMap.forEach((count, vol) => {
+      if (count > maxCount) {
+        maxCount = count;
+        bestVol = vol;
+      }
+    });
+
+    const truckId = plate.replace(/[^A-Z0-9]/g, '');
+    const truckRef = doc(db, 'trucks', truckId);
+    const existing = await getDoc(truckRef);
+
+    if (!existing.exists()) {
+      await setDoc(truckRef, {
+        plate,
+        capacity: bestVol,
+        driverName: '',
+        isActive: true,
+        updatedAt: serverTimestamp()
+      });
+      added++;
+    }
+  }
+  return added;
+};
+
 export const checkTruckAnomalies = async () => {
   const trucksSnap = await getDocs(collection(db, 'trucks'));
   const dispatchesSnap = await getDocs(collection(db, 'dispatches'));
