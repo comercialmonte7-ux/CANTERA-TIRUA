@@ -441,6 +441,35 @@ export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) 
   });
 };
 
+export const migrateMaterialName = async () => {
+  const dispatchesRef = collection(db, 'dispatches');
+  const q = query(dispatchesRef, where('materialType', '==', 'Bolón Seleccionado'));
+  const snapshot = await getDocs(q);
+  
+  let count = 0;
+  for (const docSnap of snapshot.docs) {
+    await updateDoc(docSnap.ref, { 
+      materialType: 'Material de Cantera',
+      updatedAt: serverTimestamp()
+    });
+    count++;
+  }
+
+  // También actualizar en el inventario si existe
+  const inventoryRef = collection(db, 'inventory');
+  const invQ = query(inventoryRef, where('materialType', '==', 'Bolón Seleccionado'));
+  const invSnap = await getDocs(invQ);
+  
+  for (const docSnap of invSnap.docs) {
+    await updateDoc(docSnap.ref, { 
+      materialType: 'Material de Cantera',
+      updatedAt: serverTimestamp()
+    });
+  }
+  
+  return count;
+};
+
 export const repairGuides = async () => {
   // Obtenemos todos los despachos ordenados por fecha de creación (ASC)
   const q = query(collection(db, 'dispatches'), orderBy('createdAt', 'asc'));

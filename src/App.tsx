@@ -9,6 +9,7 @@ import {
   updateDispatch,
   deleteDispatch,
   repairGuides,
+  migrateMaterialName,
   Dispatch,
   UserProfile,
   syncUserProfile,
@@ -749,7 +750,7 @@ function DispatchForm({
                     <option>Grava 3/4</option>
                     <option>Integral Rajo</option>
                     <option>Base Granular</option>
-                    <option>Bolón Seleccionado</option>
+                    <option>Material de Cantera</option>
                   </>
                 )}
               </select>
@@ -1099,24 +1100,44 @@ function HistoryView({
               />
             </div>
             {isAdmin && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600 hover:bg-amber-50 rounded-xl"
-                onClick={async () => {
-                  if (window.confirm('¿Seguro que desea renumerar TODAS las guías? Se asignarán números correlativos (001, 002...) según el orden cronológico actual.')) {
-                    const toastId = toast.loading('Renumerando...');
-                    try {
-                      const count = await repairGuides();
-                      toast.success(`${count} guías renumeradas`, { id: toastId });
-                    } catch (error) {
-                      toast.error('Error al renumerar', { id: toastId });
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-zinc-200 text-zinc-600 hover:bg-zinc-50 rounded-xl"
+                  onClick={async () => {
+                    if (window.confirm('¿Desea renombrar "Bolón Seleccionado" a "Material de Cantera" en todos los registros e inventario?')) {
+                      const toastId = toast.loading('Migrando material...');
+                      try {
+                        const count = await migrateMaterialName();
+                        toast.success(`${count} registros actualizados`, { id: toastId });
+                      } catch (error) {
+                        toast.error('Error en la migración', { id: toastId });
+                      }
                     }
-                  }
-                }}
-              >
-                Renumerar
-              </Button>
+                  }}
+                >
+                  Migrar Material
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600 hover:bg-amber-50 rounded-xl"
+                  onClick={async () => {
+                    if (window.confirm('¿Seguro que desea renumerar TODAS las guías? Se asignarán números correlativos (001, 002...) según el orden cronológico actual.')) {
+                      const toastId = toast.loading('Renumerando...');
+                      try {
+                        const count = await repairGuides();
+                        toast.success(`${count} guías renumeradas`, { id: toastId });
+                      } catch (error) {
+                        toast.error('Error al renumerar', { id: toastId });
+                      }
+                    }
+                  }}
+                >
+                  Renumerar
+                </Button>
+              </div>
             )}
           </div>
         </div>
