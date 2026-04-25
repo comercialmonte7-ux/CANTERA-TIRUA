@@ -65,7 +65,7 @@ import {
   AreaChart,
   Area
 } from 'recharts';
-import { format, startOfDay, endOfDay, isWithinInterval, subDays, startOfMonth, eachDayOfInterval } from 'date-fns';
+import { format, startOfDay, endOfDay, isWithinInterval, subDays, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getInventory, updateInventoryStock, updateInventoryName, Inventory } from './lib/firebase';
 
@@ -76,6 +76,7 @@ export default function App() {
   const [dispatches, setDispatches] = React.useState<Dispatch[]>([]);
   const [inventory, setInventory] = React.useState<Inventory[]>([]);
   const [activeTab, setActiveTab] = React.useState('inicio');
+  const [dashboardDate, setDashboardDate] = React.useState(new Date());
   const [suggestions, setSuggestions] = React.useState({ plates: [], drivers: [], destinations: [] });
   const [editingDispatch, setEditingDispatch] = React.useState<Dispatch | null>(null);
 
@@ -324,9 +325,13 @@ export default function App() {
       <main className="p-4 sm:p-8 max-w-7xl mx-auto w-full flex-1 min-h-0">
         {activeTab === 'inicio' && (
           <div className="grid grid-cols-12 gap-6">
-            <DashboardStats dispatches={dispatches} />
+            <DashboardStats dispatches={dispatches} selectedDate={dashboardDate} />
             <div className="col-span-12 lg:col-span-8">
-              <ProductionChart dispatches={dispatches} />
+              <ProductionChart 
+                dispatches={dispatches} 
+                selectedDate={dashboardDate}
+                onSelectDate={setDashboardDate}
+              />
             </div>
             <div className="col-span-12 lg:col-span-4">
               <InventoryBrief inventory={inventory} />
@@ -357,7 +362,7 @@ export default function App() {
         {activeTab === 'reportes' && (
           <div className="space-y-8">
             <ReportsCard dispatches={dispatches} />
-            <DashboardStats dispatches={dispatches} />
+            <DashboardStats dispatches={dispatches} selectedDate={dashboardDate} />
           </div>
         )}
 
@@ -402,41 +407,49 @@ function NavButton({ active, onClick, icon, label }: { active: boolean, onClick:
   );
 }
 
-function DashboardStats({ dispatches }: { dispatches: Dispatch[] }) {
-  const today = startOfDay(new Date());
-  const dispatchesToday = dispatches.filter(d => d.date >= today);
-  const volumeToday = dispatchesToday.reduce((sum, d) => sum + d.materialVolume, 0);
+function DashboardStats({ dispatches, selectedDate }: { dispatches: Dispatch[], selectedDate: Date }) {
+  const targetDate = startOfDay(selectedDate);
+  const dispatchesOnDate = dispatches.filter(d => 
+    d.date >= targetDate && d.date <= endOfDay(targetDate)
+  );
+  const volumeOnDate = dispatchesOnDate.reduce((sum, d) => sum + d.materialVolume, 0);
   
-  const yesterdayStart = startOfDay(subDays(new Date(), 1));
-  const yesterdayEnd = endOfDay(subDays(new Date(), 1));
-  const volumeYesterday = dispatches.filter(d => isWithinInterval(d.date, { start: yesterdayStart, end: yesterdayEnd })).reduce((sum, d) => sum + d.materialVolume, 0);
+  const previousDayStart = startOfDay(subDays(targetDate, 1));
+  const previousDayEnd = endOfDay(subDays(targetDate, 1));
+  const volumePrevious = dispatches.filter(d => isWithinInterval(d.date, { start: previousDayStart, end: previousDayEnd })).reduce((sum, d) => sum + d.materialVolume, 0);
 
-  const percentChange = volumeYesterday > 0 
-    ? Math.round(((volumeToday - volumeYesterday) / volumeYesterday) * 100) 
+  const percentChange = volumePrevious > 0 
+    ? Math.round(((volumeOnDate - volumePrevious) / volumePrevious) * 100) 
     : 100;
+  
+  const isToday = format(targetDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
 
   return (
     <>
       <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-[1.25rem] sm:rounded-[1.5rem] border border-zinc-200 p-4 sm:p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all duration-300">
-        <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Volumen Total Hoy</p>
+        <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">
+          {isToday ? 'Volumen Total Hoy' : `Volumen ${format(targetDate, 'dd/MM')}`}
+        </p>
         <div className="mt-2 sm:mt-0">
           <h2 className="text-3xl sm:text-4xl font-black text-zinc-900 tracking-tighter">
-            {volumeToday.toFixed(1)} <span className="text-base sm:text-lg text-zinc-300 font-black">m³</span>
+            {volumeOnDate.toFixed(1)} <span className="text-base sm:text-lg text-zinc-300 font-black">m³</span>
           </h2>
           <p className={`text-[10px] sm:text-xs font-bold mt-1 ${percentChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-            {percentChange >= 0 ? '↑' : '↓'} {Math.abs(percentChange)}% vs ayer
+            {percentChange >= 0 ? '↑' : '↓'} {Math.abs(percentChange)}% vs día anterior
           </p>
         </div>
       </div>
 
       <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-[1.25rem] sm:rounded-[1.5rem] border border-zinc-200 p-4 sm:p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all duration-300">
-        <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">Camiones Despachados</p>
+        <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">
+          {isToday ? 'Camiones Despachados' : `Camiones ${format(targetDate, 'dd/MM')}`}
+        </p>
         <div className="mt-2 sm:mt-0">
           <h2 className="text-3xl sm:text-4xl font-black text-zinc-900 tracking-tighter">
-            {dispatchesToday.length} <span className="text-base sm:text-lg text-zinc-300 font-black">uds</span>
+            {dispatchesOnDate.length} <span className="text-base sm:text-lg text-zinc-300 font-black">uds</span>
           </h2>
           <p className="text-[9px] sm:text-[10px] text-zinc-400 font-bold uppercase mt-1">
-            Promedio {(dispatchesToday.length > 0 ? (volumeToday / dispatchesToday.length).toFixed(1) : "0")} m³ / camión
+            Promedio {(dispatchesOnDate.length > 0 ? (volumeOnDate / dispatchesOnDate.length).toFixed(1) : "0")} m³ / camión
           </p>
         </div>
       </div>
@@ -1548,13 +1561,24 @@ function ReportsCard({ dispatches }: { dispatches: Dispatch[] }) {
   );
 }
 
-function ProductionChart({ dispatches }: { dispatches: Dispatch[] }) {
-  const last7Days = eachDayOfInterval({
-    start: subDays(new Date(), 6),
-    end: new Date()
+function ProductionChart({ 
+  dispatches, 
+  selectedDate, 
+  onSelectDate 
+}: { 
+  dispatches: Dispatch[], 
+  selectedDate: Date,
+  onSelectDate: (date: Date) => void
+}) {
+  const monthStart = startOfMonth(new Date());
+  const monthEnd = endOfMonth(new Date());
+  
+  const currentMonthDays = eachDayOfInterval({
+    start: monthStart,
+    end: monthEnd
   });
 
-  const chartData = last7Days.map(date => {
+  const chartData = currentMonthDays.map(date => {
     const dayStart = startOfDay(date);
     const dayEnd = endOfDay(date);
     
@@ -1565,32 +1589,51 @@ function ProductionChart({ dispatches }: { dispatches: Dispatch[] }) {
     const totalVolume = dayDispatches.reduce((sum, d) => sum + d.materialVolume, 0);
 
     return {
-      date: format(date, 'dd/MM', { locale: es }),
+      date: format(date, 'dd', { locale: es }),
+      fullDate: date,
       volume: totalVolume,
       count: dayDispatches.length
     };
   });
+
+  const isSelected = (date: Date) => format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd');
 
   return (
     <Card className="bg-white rounded-[2rem] border-zinc-200 shadow-sm overflow-hidden min-h-[400px] flex flex-col h-full">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <div>
-            <CardTitle className="text-lg font-black text-zinc-900 tracking-tight">Tendencia de Producción</CardTitle>
-            <CardDescription className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Volumen despachado (m³) - Últimos 7 días</CardDescription>
+            <CardTitle className="text-lg font-black text-zinc-900 tracking-tight">Producción Mensual</CardTitle>
+            <CardDescription className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              {format(monthStart, 'MMMM yyyy', { locale: es })} • m³ por día
+            </CardDescription>
           </div>
-          <div className="bg-emerald-50 text-emerald-700 p-2 rounded-xl">
-            <TrendingUp className="w-5 h-5" />
+          <div className="flex items-center gap-3">
+             <div className="text-right">
+               <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">Seleccionado</p>
+               <p className="text-xs font-black text-amber-600 underline decoration-amber-200 decoration-2 underline-offset-4">{format(selectedDate, 'dd MMM', { locale: es })}</p>
+             </div>
+             <div className="bg-amber-50 text-amber-600 p-2 rounded-xl">
+               <BarChart3 className="w-5 h-5" />
+             </div>
           </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1 pt-4">
         <div className="h-[280px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
+            <AreaChart 
+              data={chartData}
+              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              onClick={(data: any) => {
+                if (data && data.activePayload && data.activePayload.length > 0) {
+                  onSelectDate(data.activePayload[0].payload.fullDate);
+                }
+              }}
+            >
               <defs>
                 <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#d97706" stopOpacity={0.1}/>
+                  <stop offset="5%" stopColor="#d97706" stopOpacity={0.15}/>
                   <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
                 </linearGradient>
               </defs>
@@ -1599,29 +1642,63 @@ function ProductionChart({ dispatches }: { dispatches: Dispatch[] }) {
                 dataKey="date" 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 10, fontWeight: 700, fill: '#A1A1AA' }}
+                tick={{ fontSize: 9, fontWeight: 700, fill: '#A1A1AA' }}
+                interval={Math.ceil(currentMonthDays.length / 10)}
                 dy={10}
               />
               <YAxis 
                 axisLine={false} 
                 tickLine={false} 
-                tick={{ fontSize: 10, fontWeight: 700, fill: '#A1A1AA' }}
+                tick={{ fontSize: 9, fontWeight: 700, fill: '#A1A1AA' }}
               />
               <Tooltip 
-                contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                labelStyle={{ fontWeight: 800, color: '#18181b' }}
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="bg-zinc-900 text-white p-3 rounded-2xl shadow-2xl border border-zinc-800 scale-105 transition-transform">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">
+                          {format(data.fullDate, 'EEEE d', { locale: es })}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-black text-amber-500">{data.volume.toFixed(1)}</span>
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">m³ producidos</span>
+                        </div>
+                        <p className="text-[9px] font-bold text-emerald-500 mt-1 uppercase tracking-tighter">
+                          {data.count} camiones despachados
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+                cursor={{ stroke: '#d97706', strokeWidth: 2, strokeDasharray: '4 4' }}
               />
               <Area 
                 type="monotone" 
                 dataKey="volume" 
-                name="Metros Cúbicos"
                 stroke="#d97706" 
                 strokeWidth={3}
                 fillOpacity={1} 
-                fill="url(#colorVolume)" 
+                fill="url(#colorVolume)"
+                activeDot={{ 
+                  r: 6, 
+                  stroke: '#fff', 
+                  strokeWidth: 2, 
+                  fill: '#d97706',
+                  onClick: (event, payload) => {
+                    if (payload && payload.payload) {
+                      onSelectDate(payload.payload.fullDate);
+                    }
+                  }
+                }}
               />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+          <p className="text-[8px] text-zinc-400 font-bold uppercase tracking-[0.2em]">Haz clic en el gráfico para detallar día</p>
         </div>
       </CardContent>
     </Card>
