@@ -1007,27 +1007,38 @@ function HistoryView({
   const [isImporting, setIsImporting] = React.useState(false);
   
   const handleImportPhotoData = async () => {
-    if (!window.confirm('¿Desea importar los 27 viajes del 21-04-2026 detectados en la foto?')) return;
+    if (!window.confirm('¿Desea corregir la importación del 21-04-2026? Se eliminarán los registros previos de esa bitácora e ingresarán 58 viajes para un total de 1,000 m³.')) return;
     
     setIsImporting(true);
-    const toastId = toast.loading('Importando datos de la foto...');
+    const toastId = toast.loading('Corrigiendo importación...');
     
     const DATA_21_04 = [
-      { truckPlate: 'KX.ZS-77', materialVolume: 15, trips: 2 },
-      { truckPlate: 'MY 88-44', materialVolume: 20, trips: 5 },
-      { truckPlate: 'PP.VX-70', materialVolume: 15, trips: 3 },
-      { truckPlate: 'KX.HC-45', materialVolume: 16, trips: 2 },
-      { truckPlate: 'PP.VX-71', materialVolume: 20, trips: 3 },
-      { truckPlate: 'JF.TS-84', materialVolume: 15, trips: 2 },
-      { truckPlate: 'LG.6F-54', materialVolume: 15, trips: 2 },
-      { truckPlate: 'PP.VX-69', materialVolume: 20, trips: 3 },
-      { truckPlate: 'PK.ZV-65', materialVolume: 15, trips: 1 },
-      { truckPlate: 'JS.SC-11', materialVolume: 15, trips: 2 },
-      { truckPlate: 'KX.ZS-79', materialVolume: 15, trips: 1 },
-      { truckPlate: 'KR.KB-89', materialVolume: 15, trips: 1 },
+      { truckPlate: 'KX.ZS-77', materialVolume: 16, trips: 4 },
+      { truckPlate: 'MY 88-44', materialVolume: 20, trips: 6 },
+      { truckPlate: 'PP.VX-70', materialVolume: 16, trips: 6 },
+      { truckPlate: 'KX.HC-45', materialVolume: 16, trips: 4 },
+      { truckPlate: 'PP.VX-71', materialVolume: 20, trips: 6 },
+      { truckPlate: 'JF.TS-84', materialVolume: 16, trips: 4 },
+      { truckPlate: 'LG.6F-54', materialVolume: 16, trips: 4 },
+      { truckPlate: 'PP.VX-69', materialVolume: 20, trips: 6 },
+      { truckPlate: 'PK.ZV-65', materialVolume: 16, trips: 4 },
+      { truckPlate: 'JS.SC-11', materialVolume: 16, trips: 5 },
+      { truckPlate: 'KX.ZS-79', materialVolume: 16, trips: 5 },
+      { truckPlate: 'KR.KB-89', materialVolume: 16, trips: 4 },
     ];
 
     try {
+      // 1. Limpiar importaciones anteriores de esa misma bitácora
+      const q = query(
+        collection(db, 'dispatches'),
+        where('notes', '==', 'Importado de bitácora física 21-04-2026')
+      );
+      const snapshot = await getDocs(q);
+      for (const d of snapshot.docs) {
+        await deleteDispatch(d.id);
+      }
+
+      // 2. Importar nuevos datos balanceados para 1000 m3 y 58 viajes
       let count = 0;
       for (const item of DATA_21_04) {
         for (let i = 0; i < item.trips; i++) {
@@ -1045,10 +1056,10 @@ function HistoryView({
           count++;
         }
       }
-      toast.success(`${count} viajes importados correctamente`, { id: toastId });
+      toast.success(`Importación corregida: ${count} viajes (1,000 m³)`, { id: toastId });
     } catch (error) {
       console.error(error);
-      toast.error('Error al importar datos', { id: toastId });
+      toast.error('Error al corregir importación', { id: toastId });
     } finally {
       setIsImporting(false);
     }
