@@ -10,7 +10,7 @@ import {
   updateDispatch,
   deleteDispatch,
   repairGuides,
-  migrateMaterialName,
+  unifyInventoryAndDispatches,
   Dispatch,
   UserProfile,
   syncUserProfile,
@@ -1106,6 +1106,25 @@ function HistoryView({
                 <Button 
                   variant="outline" 
                   size="sm" 
+                  className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-zinc-200 text-zinc-600 hover:bg-zinc-50 rounded-xl"
+                  onClick={async () => {
+                    if (window.confirm('¿Desea unificar materiales duplicados (ej: "Bolón Seleccionado" y "Material de Cantera")? Esto fusionará el inventario y normalizará los registros.')) {
+                      const toastId = toast.loading('Unificando materiales...');
+                      try {
+                        const count = await unifyInventoryAndDispatches();
+                        toast.success(`${count} registros normalizados`, { id: toastId });
+                      } catch (error) {
+                        console.error(error);
+                        toast.error('Error al unificar', { id: toastId });
+                      }
+                    }
+                  }}
+                >
+                  Unificar Materiales
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
                   className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-amber-200 text-amber-600 hover:bg-amber-50 rounded-xl"
                   onClick={async () => {
                     if (window.confirm('¿Seguro que desea renumerar TODAS las guías? Se asignarán números correlativos (001, 002...) según el orden cronológico actual.')) {
@@ -1479,20 +1498,37 @@ function ReportsCard({ dispatches }: { dispatches: Dispatch[] }) {
       const title = "Cantera Tirúa - Reporte de Despachos";
       const range = `Rango: ${format(new Date(startDate + 'T00:00:00'), 'dd/MM/yyyy')} al ${format(new Date(endDate + 'T00:00:00'), 'dd/MM/yyyy')}`;
 
+      // Ordenar por número de guía numéricamente
+      const sorted = [...filtered].sort((a, b) => {
+        const numA = parseInt(a.guideNumber || '0') || 0;
+        const numB = parseInt(b.guideNumber || '0') || 0;
+        return numA - numB;
+      });
+
+      const totalVolumen = sorted.reduce((sum, d) => sum + d.materialVolume, 0);
+      const totalViajes = sorted.length;
+
+      // Calcular totales por tipo de material
+      const totalsByMaterial = sorted.reduce((acc, d) => {
+        const mat = d.materialType || 'No especificado';
+        acc[mat] = (acc[mat] || 0) + d.materialVolume;
+        return acc;
+      }, {} as Record<string, number>);
+
       doc.setFontSize(18);
       doc.text(title, 14, 22);
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text(range, 14, 30);
 
-      const body = filtered.map(d => [
+      const body = sorted.map(d => [
         format(d.date, 'dd/MM/yyyy HH:mm'),
         d.truckPlate,
         d.truckDriver,
-        d.materialVolume.toString(),
+        d.materialVolume.toFixed(1),
         d.materialType,
         d.destination,
-        d.guideNumber,
+        d.guideNumber || 'S/N',
         d.creatorName,
         d.observations || ''
       ]);
@@ -1503,8 +1539,37 @@ function ReportsCard({ dispatches }: { dispatches: Dispatch[] }) {
         startY: 35,
         theme: 'striped',
         headStyles: { fillColor: [180, 83, 9] },
-        styles: { fontSize: 8 }
+        styles: { fontSize: 7 },
+        columnStyles: {
+          3: { fontStyle: 'bold' },
+          6: { fontStyle: 'bold' }
+        }
       });
+
+      // Añadir resumen al final
+      const finalY = (doc as any).lastAutoTable.finalY || 35;
+      doc.setFontSize(11);
+      doc.setTextColor(0);
+      doc.setFont('helvetica', 'bold');
+      doc.text('RESUMEN DEL REPORTE', 14, finalY + 15);
+      
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Total de Viajes: ${totalViajes}`, 14, finalY + 22);
+      doc.text(`Volumen Total Despachado: ${totalVolumen.toFixed(1)} m3`, 14, finalY + 27);
+      
+      let nextY = finalY + 32;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Detalle por Material:', 14, nextY);
+      doc.setFont('helvetica', 'normal');
+      
+      Object.entries(totalsByMaterial).forEach(([material, volume]) => {
+        nextY += 5;
+        doc.text(`• ${material}: ${volume.toFixed(1)} m3`, 18, nextY);
+      });
+
+      nextY += 10;
+      doc.text(`Fecha de Reporte: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, nextY);
 
       doc.save(`Reporte_Tirua_${startDate}_a_${endDate}.pdf`);
       toast.success('PDF generado correctamente', { id: toastId });

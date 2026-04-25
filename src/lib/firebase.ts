@@ -17,7 +17,8 @@ import {
   updateDoc,
   runTransaction,
   enableIndexedDbPersistence,
-  getDocFromServer
+  getDocFromServer,
+  deleteDoc
 } from 'firebase/firestore';
 import { startOfDay, endOfDay } from 'date-fns';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -493,6 +494,70 @@ export const migrateMaterialName = async () => {
   
   return count;
 };
+
+export const unifyInventoryAndDispatches = async () => {
+  const inventorySnap = await getDocs(collection(db, 'inventory'));
+  const materialGroups: Record<string, Inventory[]> = {};
+
+  // Group by normalized name
+  inventorySnap.docs.forEach(docSnap => {
+    const data = docSnap.data() as Inventory;
+    const normalized = data.materialType.trim().toLowerCase();
+    if (!materialGroups[normalized]) materialGroups[normalized] = [];
+    materialGroups[normalized].push({ id: docSnap.id, ...data });
+  });
+
+  let unifiedCount = 0;
+
+  for (const [name, items] of Object.entries(materialGroups)) {
+    if (items.length > 1 || items[0].materialType !== items[0].materialType.trim()) {
+      // Find the "best" name (e.g. "Material de Cantera" vs "material de cantera")
+      // Prefer Title Case or just the first one if unsure
+      const masterName = items.find(i => i.materialType === 'Material de Cantera')?.materialType || 
+                         items[0].materialType.trim();
+      const masterId = masterName.toLowerCase().replace(/ /g, '_');
+      
+      let totalStock = items.reduce((sum, item) => sum + item.currentStock, 0);
+      
+      // Update or Create master
+      await setDoc(doc(db, 'inventory', masterId), {
+        materialType: masterName,
+        currentStock: totalStock,
+        unit: 'm3',
+        updatedAt: serverTimestamp()
+      });
+
+      // Remove others
+      for (const item of items) {
+        if (item.id !== masterId) {
+          await transactionSafeDeleteInventory(item.id);
+        }
+      }
+
+      // Update all dispatches that might have variations of this name
+      const dispatchesQ = query(collection(db, 'dispatches'));
+      const dSnap = await getDocs(dispatchesQ);
+      for (const d of dSnap.docs) {
+        const dData = d.data();
+        if (dData.materialType && dData.materialType.trim().toLowerCase() === name) {
+          if (dData.materialType !== masterName) {
+            await updateDoc(d.ref, { materialType: masterName });
+            unifiedCount++;
+          }
+        }
+      }
+    }
+  }
+  return unifiedCount;
+};
+
+async function transactionSafeDeleteInventory(id: string) {
+  const docRef = doc(db, 'inventory', id);
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    await deleteDoc(docRef);
+  }
+}
 
 export const repairGuides = async () => {
   // Obtenemos todos los despachos ordenados por fecha de creación (ASC)
