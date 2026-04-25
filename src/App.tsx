@@ -1004,6 +1004,55 @@ function HistoryView({
   const [searchTerm, setSearchTerm] = React.useState('');
   const [startDate, setStartDate] = React.useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
+  const [isImporting, setIsImporting] = React.useState(false);
+  
+  const handleImportPhotoData = async () => {
+    if (!window.confirm('¿Desea importar los 27 viajes del 21-04-2026 detectados en la foto?')) return;
+    
+    setIsImporting(true);
+    const toastId = toast.loading('Importando datos de la foto...');
+    
+    const DATA_21_04 = [
+      { truckPlate: 'KX.ZS-77', materialVolume: 15, trips: 2 },
+      { truckPlate: 'MY 88-44', materialVolume: 20, trips: 5 },
+      { truckPlate: 'PP.VX-70', materialVolume: 15, trips: 3 },
+      { truckPlate: 'KX.HC-45', materialVolume: 16, trips: 2 },
+      { truckPlate: 'PP.VX-71', materialVolume: 20, trips: 3 },
+      { truckPlate: 'JF.TS-84', materialVolume: 15, trips: 2 },
+      { truckPlate: 'LG.6F-54', materialVolume: 15, trips: 2 },
+      { truckPlate: 'PP.VX-69', materialVolume: 20, trips: 3 },
+      { truckPlate: 'PK.ZV-65', materialVolume: 15, trips: 1 },
+      { truckPlate: 'JS.SC-11', materialVolume: 15, trips: 2 },
+      { truckPlate: 'KX.ZS-79', materialVolume: 15, trips: 1 },
+      { truckPlate: 'KR.KB-89', materialVolume: 15, trips: 1 },
+    ];
+
+    try {
+      let count = 0;
+      for (const item of DATA_21_04) {
+        for (let i = 0; i < item.trips; i++) {
+          await createDispatch({
+            creatorId: 'photo-import',
+            creatorName: 'Importación Manual Foto',
+            materialType: 'Material de Cantera',
+            destination: 'Planta',
+            date: new Date('2026-04-21T12:00:00'),
+            truckDriver: 'S/N',
+            truckPlate: item.truckPlate,
+            materialVolume: item.materialVolume,
+            notes: 'Importado de bitácora física 21-04-2026'
+          });
+          count++;
+        }
+      }
+      toast.success(`${count} viajes importados correctamente`, { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al importar datos', { id: toastId });
+    } finally {
+      setIsImporting(false);
+    }
+  };
   
   const filteredDispatches = dispatches.filter(d => {
     const matchesSearch = d.truckPlate.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1118,6 +1167,15 @@ function HistoryView({
                   }}
                 >
                   Migrar Material
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-9 px-3 text-[9px] font-black uppercase tracking-widest border-emerald-200 text-emerald-600 hover:bg-emerald-50 rounded-xl"
+                  onClick={handleImportPhotoData}
+                  disabled={isImporting}
+                >
+                  {isImporting ? 'Importando...' : 'Importar Bitácora 21/04'}
                 </Button>
                 <Button 
                   variant="outline" 
