@@ -1002,7 +1002,7 @@ function HistoryView({
   onEdit?: (dispatch: Dispatch) => void
 }) {
   const [searchTerm, setSearchTerm] = React.useState('');
-  const [startDate, setStartDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
+  const [startDate, setStartDate] = React.useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
   
   const filteredDispatches = dispatches.filter(d => {

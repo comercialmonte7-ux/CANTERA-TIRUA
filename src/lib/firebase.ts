@@ -19,6 +19,7 @@ import {
   enableIndexedDbPersistence,
   getDocFromServer
 } from 'firebase/firestore';
+import { startOfDay, endOfDay } from 'date-fns';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -427,7 +428,30 @@ export const getRegistrySuggestions = (callback: (suggestions: { plates: string[
 };
 
 export const getRecentDispatches = (callback: (dispatches: Dispatch[]) => void) => {
-  const q = query(collection(db, 'dispatches'), orderBy('createdAt', 'desc'), limit(50));
+  // Aumentamos el límite o lo quitamos para asegurar que el historial cargue lo necesario
+  // Para una cantera, 500 registros es un buen compromiso entre rendimiento y visibilidad
+  const q = query(collection(db, 'dispatches'), orderBy('date', 'desc'), limit(500));
+  return onSnapshot(q, (snapshot) => {
+    const dispatches = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        date: (data.date as Timestamp).toDate(),
+      } as Dispatch;
+    });
+    callback(dispatches);
+  });
+};
+
+export const getDispatchesByRange = (startDate: Date, endDate: Date, callback: (dispatches: Dispatch[]) => void) => {
+  const q = query(
+    collection(db, 'dispatches'),
+    where('date', '>=', startOfDay(startDate)),
+    where('date', '<=', endOfDay(endDate)),
+    orderBy('date', 'desc')
+  );
+  
   return onSnapshot(q, (snapshot) => {
     const dispatches = snapshot.docs.map((doc) => {
       const data = doc.data();
